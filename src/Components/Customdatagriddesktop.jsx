@@ -9,6 +9,7 @@ const Customdatagriddesktop = ({
   onRowClick,
   pageSizeOptions = [5, 10, 20],
   defaultPageSize = 10,
+  getRowId, // ✅ optional prop for custom ID fields
 }) => {
   const theme = useTheme();
 
@@ -22,7 +23,6 @@ const Customdatagriddesktop = ({
 
   return (
     <>
-      
       <GlobalStyles
         styles={{
           ".MuiMenuItem-root:hover": {
@@ -46,6 +46,8 @@ const Customdatagriddesktop = ({
         pagination
         autoHeight
         pageSizeOptions={pageSizeOptions}
+        // ✅ Universal getRowId (uses custom prop or falls back safely)
+        getRowId={getRowId || ((row) => row.id || Math.random().toString(36).substr(2, 9))}
         initialState={{
           pagination: { paginationModel: { pageSize: defaultPageSize, page: 0 } },
         }}
@@ -53,8 +55,6 @@ const Customdatagriddesktop = ({
           borderRadius: 2,
           boxShadow: 2,
           backgroundColor: "background.paper",
-
-       
           "& .MuiDataGrid-columnHeaders": {
             backgroundColor: theme.palette.background.default,
             borderBottom: `2px solid ${theme.palette.primary.main}`,
@@ -67,26 +67,19 @@ const Customdatagriddesktop = ({
           "& .MuiDataGrid-columnSeparator": {
             color: theme.palette.primary.main,
           },
-
-          
           "& .MuiDataGrid-row": {
-            cursor: "pointer", 
+            cursor: "pointer",
             transition: "background-color 0.2s ease",
           },
           "& .MuiDataGrid-row:hover": {
-            backgroundColor: `${alpha(theme.palette.primary.main, 0.08)} !important`, 
+            backgroundColor: `${alpha(theme.palette.primary.main, 0.08)} !important`,
           },
           "& .MuiDataGrid-cell": {
             borderBottom: "1px solid rgba(224,224,224,1)",
             px: 1,
           },
-
-          
           "& .MuiTablePagination-root": {
             color: theme.palette.text.primary,
-          },
-          "& .MuiSelect-select.MuiSelect-outlined:focus": {
-            borderColor: theme.palette.primary.main,
           },
           "& .MuiSelect-icon": {
             color: theme.palette.primary.main,

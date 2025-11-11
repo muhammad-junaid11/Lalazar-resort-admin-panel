@@ -37,7 +37,7 @@ const Login = () => {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      const docRef = doc(db, "users", user.uid);
+      const docRef = doc(db, "adminUsers", user.uid);
       const docSnap = await getDoc(docRef);
 
       let fullName = "User";

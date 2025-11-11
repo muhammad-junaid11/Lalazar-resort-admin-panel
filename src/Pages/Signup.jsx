@@ -37,11 +37,11 @@ const Signup = () => {
       const user = userCredential.user;
 
       // 2️⃣ Store extra info in Firestore
-      await setDoc(doc(db, "users", user.uid), {
-        fullName,
-        email,
-        createdAt: new Date(),
-      });
+      await setDoc(doc(db, "adminUsers", user.uid), {
+  fullName,
+  email,
+  createdAt: new Date(),
+});
 
       // 3️⃣ Show toast and redirect
       toast.success("Account created successfully!");
