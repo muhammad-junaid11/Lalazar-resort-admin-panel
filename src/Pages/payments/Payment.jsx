@@ -1,74 +1,71 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Box,
   Card,
   CardContent,
   Typography,
   Button,
-  Chip,
-  CircularProgress,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Grid,
   Stack,
 } from "@mui/material";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import { useTheme } from "@mui/material/styles";
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, onSnapshot } from "firebase/firestore";
 import { db } from "../../FirebaseFireStore/Firebase";
 import Customdatagriddesktop from "../../Components/Customdatagriddesktop";
-import ConfirmDialog from "../../Components/ConfirmDialog";
 import StatusChip from "../../Components/StatusChip";
-
-// Formats check-in → check-out string
-const formatDateRange = (checkIn, checkOut) => {
-  const start = checkIn?.toDate
-    ? checkIn.toDate().toISOString().split("T")[0]
-    : checkIn;
-  const end = checkOut?.toDate
-    ? checkOut.toDate().toISOString().split("T")[0]
-    : checkOut;
-  return `${start || "N/A"} → ${end || "N/A"}`;
-};
+import { useForm } from "react-hook-form";
+import Textfieldinput from "../../Components/Forms/Textfieldinput";
+import Selectinput from "../../Components/Forms/Selectinput";
+import { Link } from "react-router-dom";
+import FormattedDate from "../../Components/FormattedDate"; // your date component
 
 const Payment = () => {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [receiptDialog, setReceiptDialog] = useState({ open: false, url: "" });
-  const [confirmDialog, setConfirmDialog] = useState({
-    open: false,
-    id: null,
-    action: null,
-  });
   const theme = useTheme();
 
+  const { control, watch } = useForm({
+    defaultValues: {
+      guestName: "",
+      status: "",
+    },
+  });
+
+  const filterGuest = watch("guestName");
+  const filterStatus = watch("status");
+
   useEffect(() => {
-    const fetchAdvancePayments = async () => {
+    const fetchAllData = async () => {
       setLoading(true);
       try {
-        const [roomsSnap, usersSnap, categoriesSnap, bookingSnap, paymentSnap] =
+        // Fetch static collections once
+        const [roomsSnap, usersSnap, categoriesSnap, bookingSnap] =
           await Promise.all([
             getDocs(collection(db, "rooms")),
             getDocs(collection(db, "users")),
             getDocs(collection(db, "roomCategory")),
             getDocs(collection(db, "bookings")),
-            getDocs(collection(db, "payment")),
           ]);
 
+        // Map categories
         const categoryMap = {};
         categoriesSnap.docs.forEach((doc) => {
           categoryMap[doc.id] = doc.data().categoryName || "Unknown";
         });
 
+        // Map rooms
         const roomMap = {};
         roomsSnap.docs.forEach((doc) => {
           const data = doc.data();
           roomMap[doc.id] = {
             roomNo: data.roomNo || "N/A",
+            price: data.price || 0,
             categoryName: categoryMap[data.categoryId] || "Unknown Category",
           };
         });
 
+        // Map users
         const userMap = {};
         usersSnap.docs.forEach((doc) => {
           const data = doc.data();
@@ -78,243 +75,176 @@ const Payment = () => {
           };
         });
 
+        // Map bookings
         const bookingsMap = {};
         bookingSnap.docs.forEach((docSnap) => {
           const data = docSnap.data();
           let roomNumbers = [];
+          let totalRoomPrice = 0;
           const roomIds = Array.isArray(data.roomId)
             ? data.roomId
             : data.roomId
             ? [data.roomId]
             : [];
+
           roomIds.forEach((rid) => {
-            if (roomMap[rid]) roomNumbers.push(roomMap[rid].roomNo);
+            if (roomMap[rid]) {
+              roomNumbers.push(roomMap[rid].roomNo);
+              totalRoomPrice += roomMap[rid].price; // sum all room prices
+            }
           });
+
           bookingsMap[docSnap.id] = {
             guestName: userMap[data.userId]?.userName || "Unknown",
             checkIn: data.checkInDate || data.checkIn,
             checkOut: data.checkOutDate || data.checkOut,
             roomNumbers: roomNumbers.join(", ") || "N/A",
+            totalPrice: totalRoomPrice,
           };
         });
 
-        const advancePayments = paymentSnap.docs
-          .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-          .filter((p) => p.advance && p.advance !== "0");
+        const unsubscribe = onSnapshot(collection(db, "payment"), (snapshot) => {
+          const paymentsWithPaidAmount = snapshot.docs
+            .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+            .filter((p) => p.paidAmount); // Filter for payments with paidAmount
 
-        const mergedData = advancePayments.map((p) => {
-          const booking = bookingsMap[p.bookingId] || {};
-          return {
-            id: p.id,
-            guestName: booking.guestName,
-            roomNo: booking.roomNumbers,
-            dates: formatDateRange(booking.checkIn, booking.checkOut),
-            advance: p.advance || "N/A",
-            receipt: p.receiptPath || "",
-            status:
-              p.status?.charAt(0).toUpperCase() + p.status?.slice(1) ||
-              "Pending",
-          };
+          const mergedData = paymentsWithPaidAmount.map((p) => {
+            const booking = bookingsMap[p.bookingId] || {};
+            const start = booking.checkIn || null;
+            const end = booking.checkOut || null;
+
+            return {
+              id: p.id,
+              guestName: booking.guestName || "N/A",
+              roomNo: booking.roomNumbers || "N/A",
+              startDate: start, // raw start date
+              endDate: end,     // raw end date
+              paidAmount: Number(p.paidAmount || 0), // Directly from DB
+              totalAmount: booking.totalPrice || 0, // Sum of room prices
+              status: p.status
+                ? p.status.charAt(0).toUpperCase() + p.status.slice(1).toLowerCase()
+                : "Pending",  // <-- FIX: Added .toLowerCase() for consistency
+            };
+          });
+
+          setPayments(mergedData);
+          setLoading(false);
         });
 
-        setPayments(mergedData);
+        return () => unsubscribe();
       } catch (err) {
-        console.error("Failed to fetch advance payments:", err);
-      } finally {
+        console.error("Failed to fetch payments:", err);
         setLoading(false);
       }
     };
 
-    fetchAdvancePayments();
+    fetchAllData();
   }, []);
-
-  const handleStatusUpdate = async (id, newStatus) => {
-    try {
-      await updateDoc(doc(db, "payment", id), { status: newStatus });
-      setPayments((prev) =>
-        prev.map((p) =>
-          p.id === id
-            ? {
-                ...p,
-                status: newStatus.charAt(0).toUpperCase() + newStatus.slice(1),
-              }
-            : p
-        )
-      );
-    } catch (err) {
-      console.error("Failed to update status:", err);
-    }
-  };
 
   const columns = [
     { field: "guestName", headerName: "Guest Name", flex: 1 },
-    { field: "roomNo", headerName: "Room No", flex: 1 },
-    { field: "advance", headerName: "Advance", flex: 1 },
-    { field: "dates", headerName: "Check-in → Check-out", flex: 1.5 },
+    { field: "paidAmount", headerName: "Paid Amount", flex: 1 },
+    { field: "totalAmount", headerName: "Total Amount", flex: 1 },
     {
-      field: "receipt",
-      headerName: "Receipt",
-      flex: 0.8,
+      field: "dates",
+      headerName: "Check-in → Check-out",
+      flex: 1.5,
       sortable: false,
+      filterable: false,
       renderCell: (params) => (
-        <Button
-          size="small"
-          variant="outlined"
-          onClick={() => setReceiptDialog({ open: true, url: params.value })}
-          disabled={!params.value}
-        >
-          View
-        </Button>
+        <span>
+          <FormattedDate value={params.row.startDate} type="date" /> →{" "}
+          <FormattedDate value={params.row.endDate} type="date" />
+        </span>
       ),
     },
-   {
-  field: "status",
-  headerName: "Status",
-  flex: 1,
-  renderCell: (params) => <StatusChip label={params.value} />,
-},
-
+    {
+      field: "status",
+      headerName: "Status",
+      flex: 1,
+      renderCell: (params) => <StatusChip label={params.value} />,
+    },
     {
       field: "actions",
       headerName: "Actions",
-      flex: 1,
+      flex: 0.8,
       sortable: false,
       filterable: false,
-      renderCell: (params) => {
-        const status = params.row.status;
-
-        // Determine the disabled state for each button
-        const isVerified = status === "Verified";
-        const isRejected = status === "Rejected";
-
-        // Verify button remains enabled only if status is Pending or Rejected
-        const isVerifyDisabled = isVerified;
-
-        // Reject button is disabled if status is Verified OR Rejected
-        const isRejectDisabled = isVerified || isRejected;
-
-        return (
-          <Box
-            sx={{
-              display: "flex",
-              width: "100%",
-              height: "100%",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Stack direction="row" spacing={1}>
-              {/* VERIFY Button */}
-              <Button
-                size="small"
-                variant="contained"
-                color="success"
-                // Use the calculated disabled state
-                disabled={isVerifyDisabled}
-                onClick={() =>
-                  setConfirmDialog({
-                    open: true,
-                    id: params.row.id,
-                    action: "verified",
-                  })
-                }
-              >
-                Verify
+      renderCell: (params) => (
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            width: "100%",
+            height: "100%",
+            alignItems: "center",
+          }}
+        >
+          <Stack direction="row" spacing={1}>
+            <Link to={`/payments/${params.row.id}`} style={{ textDecoration: "none" }}>
+              <Button size="small" variant="outlined" color="info">
+                <VisibilityIcon fontSize="small" />
               </Button>
-
-              {/* REJECT Button */}
-              <Button
-                size="small"
-                variant="contained"
-                color="error"
-                // Use the calculated disabled state
-                disabled={isRejectDisabled}
-                onClick={() =>
-                  setConfirmDialog({
-                    open: true,
-                    id: params.row.id,
-                    action: "rejected",
-                  })
-                }
-              >
-                Reject
-              </Button>
-            </Stack>
-          </Box>
-        );
-      },
+            </Link>
+          </Stack>
+        </Box>
+      ),
     },
   ];
+
+  const filteredRows = useMemo(() => {
+    return payments.filter((row) => {
+      const searchValue = filterGuest.toLowerCase();
+      const matchesGuest = row.guestName?.toLowerCase().includes(searchValue);
+      const matchesRoom = row.roomNo?.toLowerCase().includes(searchValue);
+      const matchesStatus = filterStatus ? row.status === filterStatus : true;
+      return (matchesGuest || matchesRoom) && matchesStatus;
+    });
+  }, [payments, filterGuest, filterStatus]);
 
   return (
     <Box>
       <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
         <CardContent>
+          {/* Filters Top-Right */}
+          <Grid container justifyContent="flex-end" spacing={2} sx={{ mb: 2 }}>
+            <Grid item>
+              <Textfieldinput
+                name="guestName"
+                control={control}
+                placeholder="Search by Guest Name or Room No."
+                fullWidth={false}
+                sx={{ minWidth: 220 }}
+              />
+            </Grid>
+            <Grid item>
+              <Selectinput
+                name="status"
+                control={control}
+                label="Status"
+                options={[
+                  { label: "All", value: "" },
+                  { label: "Pending", value: "Pending" },
+                  { label: "Rejected", value: "Rejected" },
+                  { label: "Paid", value: "Paid" },
+                ]}
+                sx={{ minWidth: 180 }}
+              />
+            </Grid>
+          </Grid>
+
           <Box sx={{ width: "100%", minWidth: 600, position: "relative" }}>
             <Customdatagriddesktop
-              rows={payments}
+              rows={filteredRows}
               columns={columns}
               pageSizeOptions={[5, 10, 20]}
               defaultPageSize={10}
               getRowId={(row) => row.id}
-              loading={loading} 
+              loading={loading}
             />
           </Box>
         </CardContent>
       </Card>
-
-      {/* Receipt Dialog (like BookingDetails) */}
-      <Dialog
-        open={receiptDialog.open}
-        onClose={() => setReceiptDialog({ open: false, url: "" })}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Payment Receipt</DialogTitle>
-        <DialogContent sx={{ display: "flex", justifyContent: "center" }}>
-          {receiptDialog.url ? (
-            <Box
-              component="img"
-              src={receiptDialog.url}
-              alt="Payment Receipt"
-              sx={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain" }}
-            />
-          ) : (
-            <Typography>No receipt available.</Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setReceiptDialog({ open: false, url: "" })}
-            color="primary"
-          >
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Confirm Dialog */}
-      <ConfirmDialog
-        open={confirmDialog.open}
-        onClose={() =>
-          setConfirmDialog({ open: false, id: null, action: null })
-        }
-        title={
-          confirmDialog.action === "verified"
-            ? "Confirm Payment"
-            : "Reject Payment"
-        }
-        description={
-          confirmDialog.action === "verified"
-            ? "Are you sure you want to verify this payment?"
-            : "Are you sure you want to reject this payment?"
-        }
-        confirmText={confirmDialog.action === "verified" ? "Verify" : "Reject"}
-        color={confirmDialog.action === "verified" ? "success" : "error"}
-        onConfirm={() => {
-          handleStatusUpdate(confirmDialog.id, confirmDialog.action);
-        }}
-      />
     </Box>
   );
 };

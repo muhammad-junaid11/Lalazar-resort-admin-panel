@@ -5,7 +5,6 @@ import {
   Typography,
   Card,
   CardContent,
-  Chip,
   Grid,
   useTheme,
 } from "@mui/material";
@@ -25,9 +24,11 @@ import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import enUS from "date-fns/locale/en-US";
 import "react-big-calendar/lib/css/react-big-calendar.css";
+
 import KeyValueBlock from "../../Components/KeyValueBlock";
 import HeaderSection from "../../Components/HeaderSection";
 import LoadingOverlay from "../../Components/LoadingOverlay";
+import StatusChip from "../../Components/StatusChip";
 
 const locales = { "en-US": enUS };
 const localizer = dateFnsLocalizer({
@@ -146,31 +147,8 @@ const RoomDetails = () => {
     fetchRoomAndBookings();
   }, [roomId]);
 
-  const StatusChip = ({ label }) => {
-    const colors = {
-      Available: theme.palette.success.main,
-      Booked: theme.palette.error.main,
-      Maintenance: theme.palette.warning.main,
-      Cleaning: theme.palette.info.main,
-    };
-    const color = colors[label] || theme.palette.grey[500];
-    return (
-      <Chip
-        label={label}
-        size="small"
-        sx={{
-          backgroundColor: color + "33",
-          color,
-          fontWeight: 600,
-          ml: 1,
-        }}
-      />
-    );
-  };
-
   return (
     <Box sx={{ flexGrow: 1, mt: 0, mb: 0, py: 1, position: "relative" }}>
-      {/* Loading overlay */}
       <LoadingOverlay
         loading={loading}
         message="Loading room details..."
@@ -216,10 +194,7 @@ const RoomDetails = () => {
                 <KeyValueBlock label="Price (PKR)" value={room.price} />
               </Grid>
               <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-                <KeyValueBlock
-                  label="Property Type"
-                  value={room.propertyType}
-                />
+                <KeyValueBlock label="Property Type" value={room.propertyType} />
               </Grid>
               <Grid size={{ xs: 12, md: 6, lg: 4 }}>
                 <KeyValueBlock label="Current Status" value={room.status} />

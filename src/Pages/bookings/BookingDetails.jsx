@@ -4,20 +4,13 @@ import {
   Typography,
   Card,
   CardContent,
-  Chip,
   Stack,
-  CircularProgress,
-  useTheme,
   Button,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Grid,
+  useTheme,
 } from "@mui/material";
-import { Close } from "@mui/icons-material";
 import { useParams } from "react-router-dom";
+import ImageDialog from "../../Components/ImageDialog";
 import {
   doc,
   getDoc,
@@ -34,6 +27,8 @@ import ConfirmDialog from "../../Components/ConfirmDialog";
 import KeyValueBlock from "../../Components/KeyValueBlock";
 import HeaderSection from "../../Components/HeaderSection";
 import LoadingOverlay from "../../Components/LoadingOverlay";
+import StatusChip from "../../Components/StatusChip";
+import FormattedDate from "../../Components/FormattedDate";
 
 const BookingDetails = () => {
   const { id } = useParams();
@@ -42,11 +37,8 @@ const BookingDetails = () => {
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
-  // ConfirmDialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogAction, setDialogAction] = useState(null);
-
-  // Receipt Dialog state
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
 
   const parseTimestamp = (value) => {
@@ -62,21 +54,6 @@ const BookingDetails = () => {
     }
   };
 
-  const formatDateTime = (value) => {
-    const date = parseTimestamp(value);
-    if (!date) return "--";
-    return date.toLocaleString("en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  };
-
-  const formatDateOnly = (value) => {
-    const date = parseTimestamp(value);
-    if (!date) return "--";
-    return date.toISOString().split("T")[0];
-  };
-
   const fetchBookingDetails = async () => {
     try {
       setLoading(true);
@@ -89,14 +66,12 @@ const BookingDetails = () => {
       const bookingData = bookingSnap.data();
       const bookingDocId = bookingSnap.id;
 
-      // Fetch user info
       let userData = {};
       if (bookingData.userId) {
         const userSnap = await getDoc(doc(db, "users", bookingData.userId));
         if (userSnap.exists) userData = userSnap.data();
       }
 
-      // 🚨 UPDATED PAYMENT INFO FETCHING 🚨
       const paymentRef = collection(db, "payment");
       const paymentQuery = query(
         paymentRef,
@@ -104,12 +79,12 @@ const BookingDetails = () => {
       );
       const paymentSnap = await getDocs(paymentQuery);
 
-      let totalAmount = 0;
+      let totalAmount = 0; // **manual total amount**
       let paymentDate = "--";
       let paymentMethod = bookingData.paymentMethod || "--";
       let paymentStatus = "Pending";
       let paymentId = "--";
-      let paymentReceiptUrl = ""; // Will capture the receiptPath if found
+      let paymentReceiptUrl = "";
 
       if (!paymentSnap.empty) {
         let latestPaymentTimestamp = 0;
@@ -117,18 +92,8 @@ const BookingDetails = () => {
 
         paymentSnap.docs.forEach((payDoc) => {
           const payData = payDoc.data();
+          if (payData.receiptPath) paymentReceiptUrl = payData.receiptPath;
 
-          // 1. Calculate total amount
-          totalAmount += Number(
-            (payData.amount || "0").toString().replace(/[^0-9.]/g, "")
-          );
-
-          // 2. Capture the receipt path (prioritize existence over time)
-          if (payData.receiptPath) {
-            paymentReceiptUrl = payData.receiptPath;
-          }
-
-          // 3. Track the LATEST payment for status and date display
           const paymentTimestamp = payData.paymentDate?.seconds || 0;
           if (paymentTimestamp >= latestPaymentTimestamp) {
             latestPaymentTimestamp = paymentTimestamp;
@@ -137,26 +102,22 @@ const BookingDetails = () => {
           }
         });
 
-        // Use the data from the latest payment for status and date
         if (latestPaymentData) {
           paymentMethod = latestPaymentData.paymentType || paymentMethod;
           paymentStatus = latestPaymentData.status
             ? latestPaymentData.status.charAt(0).toUpperCase() +
               latestPaymentData.status.slice(1)
             : "Pending";
-          paymentDate = latestPaymentData.paymentDate
-            ? formatDateTime(latestPaymentData.paymentDate)
-            : "--";
+          paymentDate = latestPaymentData.paymentDate || null;
         }
       }
-      // 🚨 END UPDATED PAYMENT INFO FETCHING 🚨
 
-      // Rooms info
+      // Fetch room details and calculate **manual total amount**
       let roomsDetails = [];
       if (Array.isArray(bookingData.roomId) && bookingData.roomId.length > 0) {
         const roomPromises = bookingData.roomId.map(async (roomId) => {
           const roomSnap = await getDoc(doc(db, "rooms", roomId));
-          if (!roomSnap.exists()) return null;
+          if (!roomSnap.exists) return null;
           const roomData = roomSnap.data();
 
           let categoryName = "--";
@@ -174,10 +135,13 @@ const BookingDetails = () => {
             if (hotelSnap.exists) hotelName = hotelSnap.data().hotelName;
           }
 
+          totalAmount += Number(roomData.price || 0); // **add room price to total**
+
           return {
             roomNo: roomData.roomNo || "N/A",
             category: categoryName,
             hotel: hotelName,
+            price: roomData.price || 0, // optional
           };
         });
 
@@ -192,7 +156,7 @@ const BookingDetails = () => {
             bookingData.status?.slice(1) || "New",
         userName: userData.userName || userData.fullName || "N/A",
         gender: userData.gender || "N/A",
-        dob: formatDateOnly(userData.dob),
+        dob: userData.dob || null,
         number: userData.number || "--",
         email: userData.email || userData.userEmail || "--",
         address: userData.address || "--",
@@ -200,19 +164,19 @@ const BookingDetails = () => {
         userId: bookingData.userId || "--",
         roomsDetails,
         paymentId,
-        totalAmount,
+        totalAmount, // **calculated manually**
         paymentMethod,
         paymentStatus,
         paymentDate,
         paymentReceipt: paymentReceiptUrl,
         persons: bookingData.persons || "--",
-        checkIn: formatDateTime(bookingData.checkInDate),
-        checkOut: formatDateTime(bookingData.checkOutDate),
+        checkIn: bookingData.checkInDate || null,
+        checkOut: bookingData.checkOutDate || null,
         adminId: bookingData.adminId || "--",
         secondaryEmail: bookingData.secondaryEmail || "--",
       });
     } catch (error) {
-      console.error("Error fetching booking details:", error);
+      console.error("Error:", error);
       toast.error("Failed to fetch booking details");
       setBooking(null);
     } finally {
@@ -243,49 +207,14 @@ const BookingDetails = () => {
     }
   };
 
-  const getChipColor = (status, isPayment = false) => {
-    const bookingColors = {
-      New: theme.palette.primary.main,
-      Pending: theme.palette.warning.main,
-      Confirmed: theme.palette.success.main,
-      "Checked Out": theme.palette.info.main,
-      Cancelled: theme.palette.error.main,
-      Rejected: theme.palette.error.main,
-    };
-    const paymentColors = {
-      Paid: theme.palette.success.main,
-      Pending: theme.palette.warning.main,
-      Refunded: theme.palette.info.main,
-      Failed: theme.palette.error.main,
-      Waived: theme.palette.grey[600],
-    };
-    return isPayment
-      ? paymentColors[status] || theme.palette.grey[500]
-      : bookingColors[status] || theme.palette.grey[500];
-  };
-
-  const StatusChip = ({ label, isPayment = false }) => {
-    const color = getChipColor(label, isPayment);
+  if (loading)
     return (
-      <Chip
-        label={label || "--"}
-        size="small"
-        sx={{ backgroundColor: color + "33", color, fontWeight: 600, ml: 1 }}
+      <LoadingOverlay
+        loading={loading}
+        message="Loading booking details..."
+        fullScreen
       />
     );
-  };
-
-
-
-
-  if (loading)
-  return (
-    <LoadingOverlay
-      loading={loading}
-      message="Loading booking details..."
-      fullScreen
-    />
-  );
 
   if (!booking)
     return (
@@ -303,7 +232,7 @@ const BookingDetails = () => {
 
       <Card sx={{ borderRadius: 3, boxShadow: 4, mb: 4 }}>
         <CardContent sx={{ px: { xs: 2, sm: 4, md: 6 } }}>
-          {/* Booking Status */}
+          {/* Status Section */}
           <Box
             sx={{
               mb: 3,
@@ -370,11 +299,9 @@ const BookingDetails = () => {
             </Button>
           </Box>
 
+          {/* Guest Info */}
           <HeaderSection title="Guest Information" />
           <Grid container sx={{ px: 0.5 }} spacing={2}>
-            <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock label="Guest Name" value={booking.userName} />
-            </Grid>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
               <KeyValueBlock label="Guest Name" value={booking.userName} />
             </Grid>
@@ -382,7 +309,10 @@ const BookingDetails = () => {
               <KeyValueBlock label="Gender" value={booking.gender} />
             </Grid>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock label="Date of Birth" value={booking.dob} />
+              <KeyValueBlock
+                label="Date of Birth"
+                value={<FormattedDate value={booking.dob} type="date" />}
+              />
             </Grid>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
               <KeyValueBlock label="Phone No" value={booking.number} />
@@ -433,56 +363,52 @@ const BookingDetails = () => {
                 <Typography>Room Number: {room.roomNo}</Typography>
                 <Typography>Category: {room.category}</Typography>
                 <Typography>Hotel: {room.hotel}</Typography>
+                <Typography>Price: {room.price}</Typography>
               </Card>
             ))}
           </Box>
 
-          {/* Reservation & Payment Details */}
+          {/* Reservation & Payment */}
           <HeaderSection title="Reservation & Payment Details" />
           <Grid container sx={{ px: 0.5 }} spacing={2}>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
               <KeyValueBlock label="Guests" value={booking.persons} />
             </Grid>
-
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock label="Check-In" value={booking.checkIn} />
+              <KeyValueBlock
+                label="Check-In"
+                value={<FormattedDate value={booking.checkIn} type="time" />}
+              />
             </Grid>
-
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock label="Check-Out" value={booking.checkOut} />
+              <KeyValueBlock
+                label="Check-Out"
+                value={<FormattedDate value={booking.checkOut} type="time" />}
+              />
             </Grid>
-
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
               <KeyValueBlock label="Total Amount" value={booking.totalAmount} />
             </Grid>
-
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock
-                label="Payment Method"
-                value={booking.paymentMethod}
-              />
+              <KeyValueBlock label="Payment Method" value={booking.paymentMethod} />
             </Grid>
-
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock label="Payment Date" value={booking.paymentDate} />
+              <KeyValueBlock label="Payment Date">
+                {booking.paymentDate && (
+                  <Box sx={{ display: "flex", flexDirection: "column" }}>
+                    <FormattedDate value={booking.paymentDate} type="date" />
+                    <FormattedDate value={booking.paymentDate} type="time" />
+                  </Box>
+                )}
+              </KeyValueBlock>
             </Grid>
-
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
               <KeyValueBlock label="Payment Receipt">
                 {booking.paymentReceipt && (
                   <Button
                     variant="contained"
                     color="primary"
-                    sx={{
-                      mt: 1,
-                      px: 2,
-                      maxWidth: 180,
-                      minWidth: 100,
-                      textTransform: "none",
-                      overflow: "hidden",
-                      whiteSpace: "nowrap",
-                      textOverflow: "ellipsis",
-                    }}
+                    sx={{ mt: 1, px: 2, maxWidth: 180, minWidth: 100, textTransform: "none" }}
                     onClick={() => setReceiptDialogOpen(true)}
                   >
                     Show Receipt
@@ -494,13 +420,10 @@ const BookingDetails = () => {
         </CardContent>
       </Card>
 
-      {/* Confirm Dialog */}
       <ConfirmDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        title={
-          dialogAction === "Confirmed" ? "Confirm Booking" : "Reject Booking"
-        }
+        title={dialogAction === "Confirmed" ? "Confirm Booking" : "Reject Booking"}
         description={
           dialogAction === "Confirmed"
             ? "Are you sure you want to accept this booking?"
@@ -511,28 +434,12 @@ const BookingDetails = () => {
         cancelText="Cancel"
       />
 
-      {/* Receipt Dialog */}
-      <Dialog
+      <ImageDialog
         open={receiptDialogOpen}
         onClose={() => setReceiptDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Payment Receipt</DialogTitle>
-        <DialogContent sx={{ display: "flex", justifyContent: "center" }}>
-          <Box
-            component="img"
-            src={booking?.paymentReceipt} // Use optional chaining just in case
-            alt="Payment Receipt"
-            sx={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain" }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setReceiptDialogOpen(false)} color="primary">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
+        title="Payment Receipt"
+        imageSrc={booking?.paymentReceipt}
+      />
     </Box>
   );
 };

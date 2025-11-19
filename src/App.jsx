@@ -22,6 +22,7 @@ import DashboardLayoutpage from "./Components/Dashboadlayout/DashboardLayoutpage
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import RoomCategories from "./Pages/roomcategory/RoomCategories";
 import AddEditCategory from "./Pages/roomcategory/AddEditCategory";
+import PaymentDetails from "./Pages/payments/PaymentDetails";
 
 function AppContent() {
   const theme = useTheme();
@@ -40,35 +41,29 @@ function AppContent() {
       />
 
       <Routes>
-        {/* Public Routes */}
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
 
-        {/* Protected Dashboard Routes */}
         <Route path="/" element={<DashboardLayoutpage />}>
-          {/* Dashboard Overview */}
           <Route path="dashboard" element={<Dashboard />} />
-
-          {/* Bookings */}
           <Route path="bookings" element={<Bookings />} />
           <Route path="bookings/:id" element={<BookingDetails />} />
           <Route path="payments" element={<Payment />} />
+          <Route path="payments/:id" element={<PaymentDetails />} />
 
-          {/* Rooms */}
+
           <Route path="rooms" element={<Rooms />} />
           <Route path="rooms/add" element={<AddRoom />} />
           <Route path="rooms/:roomId" element={<RoomDetails />} />
           <Route path="rooms/:roomId/add" element={<AddRoom />} />
           <Route path="rooms/:roomId/edit" element={<AddRoom />} />
 
-          {/* ✅ Room Categories (now inside layout) */}
           <Route path="rooms-categories" element={<RoomCategories />} />
           <Route path="rooms-categories/add" element={<AddEditCategory />} />
           <Route path="rooms-categories/:id" element={<AddEditCategory />} />
         </Route>
 
-        {/* Catch-all */}
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </>

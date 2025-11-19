@@ -10,7 +10,13 @@ import {
 } from "@mui/material";
 import { Link } from "react-router-dom";
 import { auth, db } from "../../FirebaseFireStore/Firebase";
-import { doc, getDoc, collection, getDocs } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  collection,
+  getDocs,
+  onSnapshot,
+} from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 
 import Customdatagriddesktop from "../../Components/Customdatagriddesktop";
@@ -20,6 +26,7 @@ import MeetingRoomIcon from "@mui/icons-material/MeetingRoom";
 import EmojiEmotionsIcon from "@mui/icons-material/EmojiEmotions";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import StatusChip from "../../Components/StatusChip";
+import FormattedDate from "../../Components/FormattedDate";
 
 import { useForm } from "react-hook-form";
 import Textfieldinput from "../../Components/Forms/Textfieldinput";
@@ -28,21 +35,31 @@ import Selectinput from "../../Components/Forms/Selectinput";
 const statuses = ["New", "Pending", "Confirmed", "Checked Out", "Cancelled"];
 
 const stats = [
-  { label: "Active Bookings", value: "85%", change: "+5%", icon: <HotelIcon sx={{ fontSize: 32, color: "#fff" }} /> },
-  { label: "Room Occupancy", value: "65%", change: "-10%", icon: <MeetingRoomIcon sx={{ fontSize: 32, color: "#fff" }} /> },
-  { label: "Guest Satisfaction", value: "6.0/10", change: "-4%", icon: <EmojiEmotionsIcon sx={{ fontSize: 32, color: "#fff" }} /> },
-  { label: "Revenue Growth", value: "12%", change: "+8%", icon: <TrendingUpIcon sx={{ fontSize: 32, color: "#fff" }} /> },
+  {
+    label: "Active Bookings",
+    value: "85%",
+    change: "+5%",
+    icon: <HotelIcon sx={{ fontSize: 32, color: "#fff" }} />,
+  },
+  {
+    label: "Room Occupancy",
+    value: "65%",
+    change: "-10%",
+    icon: <MeetingRoomIcon sx={{ fontSize: 32, color: "#fff" }} />,
+  },
+  {
+    label: "Guest Satisfaction",
+    value: "6.0/10",
+    change: "-4%",
+    icon: <EmojiEmotionsIcon sx={{ fontSize: 32, color: "#fff" }} />,
+  },
+  {
+    label: "Revenue Growth",
+    value: "12%",
+    change: "+8%",
+    icon: <TrendingUpIcon sx={{ fontSize: 32, color: "#fff" }} />,
+  },
 ];
-
-const formatDate = (val) => {
-  if (!val) return "N/A";
-  try {
-    const date = val.toDate ? val.toDate() : new Date(val);
-    return isNaN(date.getTime()) ? "N/A" : date.toISOString().split("T")[0];
-  } catch {
-    return "N/A";
-  }
-};
 
 const Bookings = () => {
   const [adminName, setAdminName] = useState("Admin");
@@ -51,9 +68,6 @@ const Bookings = () => {
   const [loading, setLoading] = useState(true);
   const theme = useTheme();
 
-  // ===========================================
-  // React Hook Form Setup
-  // ===========================================
   const { control, watch } = useForm({
     defaultValues: {
       search: "",
@@ -73,7 +87,11 @@ const Bookings = () => {
         try {
           const docRef = doc(db, "users", user.uid);
           const docSnap = await getDoc(docRef);
-          setAdminName(docSnap.exists() ? docSnap.data().userName || docSnap.data().fullName || "Admin" : "Admin");
+          setAdminName(
+            docSnap.exists()
+              ? docSnap.data().userName || docSnap.data().fullName || "Admin"
+              : "Admin"
+          );
         } catch {
           setAdminName("Admin");
         }
@@ -82,25 +100,28 @@ const Bookings = () => {
     return () => unsubscribe();
   }, []);
 
-  // Fetch all booking-related data
+  // Fetch initial data (bookings, rooms, users, categories, payments)
   useEffect(() => {
-    const fetchBookings = async () => {
+    const fetchStaticData = async () => {
       setLoading(true);
       try {
-        const [roomsSnap, usersSnap, categoriesSnap, bookingSnap, paymentSnap] = await Promise.all([
-          getDocs(collection(db, "rooms")),
-          getDocs(collection(db, "users")),
-          getDocs(collection(db, "roomCategory")),
-          getDocs(collection(db, "bookings")),
-          getDocs(collection(db, "payment")),
-        ]);
+        const [roomsSnap, usersSnap, categoriesSnap, bookingSnap, paymentSnap] =
+          await Promise.all([
+            getDocs(collection(db, "rooms")),
+            getDocs(collection(db, "users")),
+            getDocs(collection(db, "roomCategory")),
+            getDocs(collection(db, "bookings")),
+            getDocs(collection(db, "payment")),
+          ]);
 
+        // Map categories
         const categoryMap = {};
-        categoriesSnap.docs.forEach(doc => {
+        categoriesSnap.docs.forEach((doc) => {
           categoryMap[doc.id] = doc.data().categoryName || "Unknown";
         });
         setCategories(Object.values(categoryMap));
 
+        // Map rooms
         const roomMap = {};
         roomsSnap.docs.forEach((doc) => {
           const data = doc.data();
@@ -110,6 +131,7 @@ const Bookings = () => {
           };
         });
 
+        // Map users
         const userMap = {};
         usersSnap.docs.forEach((doc) => {
           const data = doc.data();
@@ -119,20 +141,31 @@ const Bookings = () => {
           };
         });
 
+        // Map payments (aggregate status per booking: Pending if any is Pending, else Paid)
         const paymentMap = {};
-        paymentSnap.docs.forEach((doc) => {
-          const data = doc.data();
-          if (data.bookingId)
-            paymentMap[data.bookingId] = {
-              status: data.status?.charAt(0).toUpperCase() + data.status?.slice(1).toLowerCase() || "Pending",
-            };
+        paymentSnap.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          const bookingId = data.bookingId;
+          if (!bookingId) return;
+
+          const status = data.status || "Pending";
+
+          if (!paymentMap[bookingId]) {
+            paymentMap[bookingId] = [];
+          }
+          paymentMap[bookingId].push(status);
         });
 
-        const mergedBookings = bookingSnap.docs.map((docSnap) => {
+        // Aggregate: if any status is "Pending", overall is "Pending", else "Paid"
+        Object.keys(paymentMap).forEach((bookingId) => {
+          const statuses = paymentMap[bookingId];
+          paymentMap[bookingId] = statuses.includes("Pending") ? "Pending" : "Paid";
+        });
+
+        // Map bookings
+        const bookingsData = bookingSnap.docs.map((docSnap) => {
           const data = docSnap.data();
           const userData = userMap[data.userId] || {};
-          const paymentData = paymentMap[docSnap.id] || paymentMap[data.bookingId] || {};
-
           let roomNumbers = [];
           let categoriesList = [];
 
@@ -150,28 +183,69 @@ const Bookings = () => {
 
           return {
             id: docSnap.id,
-            bookingId: data.bookingId || docSnap.id.substring(0, 8),
+            bookingId: docSnap.id,
             userName: userData.userName,
             email: userData.userEmail,
             category: categoriesList.join(", ") || "Unknown Category",
             roomNumber: roomNumbers.join(", ") || "N/A",
-            roomCount: Array.isArray(data.roomId) ? data.roomId.length : data.roomId ? 1 : 0,
-            checkIn: formatDate(data.checkInDate || data.checkIn),
-            checkOut: formatDate(data.checkOutDate || data.checkOut),
-            bookingStatus: data.status?.charAt(0).toUpperCase() + data.status?.slice(1) || "New",
-            paymentStatus: paymentData.status || "Pending",
+            roomCount: Array.isArray(data.roomId)
+              ? data.roomId.length
+              : data.roomIds
+              ? 1
+              : 0,
+            checkIn: data.checkInDate || data.checkIn,
+            checkOut: data.checkOutDate || data.checkOut,
+            bookingStatus:
+              data.status?.charAt(0).toUpperCase() + data.status?.slice(1) ||
+              "New",
+            paymentStatus: paymentMap[docSnap.id] || "Pending",
           };
         });
 
-        setBookings(mergedBookings);
+        setBookings(bookingsData);
       } catch (error) {
-        console.error("Error fetching bookings:", error);
+        console.error("Error fetching static data:", error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchBookings();
+    fetchStaticData();
+  }, []);
+
+  // Merge payment status from snapshot for real-time updates
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, "payment"), (snapshot) => {
+      const paymentMap = {}; // bookingId → list of statuses
+
+      snapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data();
+        const bookingId = data.bookingId;
+        if (!bookingId) return;
+
+        const status = data.status || "Pending";
+
+        if (!paymentMap[bookingId]) {
+          paymentMap[bookingId] = [];
+        }
+        paymentMap[bookingId].push(status);
+      });
+
+      // Aggregate: if any status is "Pending", overall is "Pending", else "Paid"
+      Object.keys(paymentMap).forEach((bookingId) => {
+        const statuses = paymentMap[bookingId];
+        paymentMap[bookingId] = statuses.includes("Pending") ? "Pending" : "Paid";
+      });
+
+      setBookings((prev) =>
+        prev.map((b) => ({
+          ...b,
+          paymentStatus: paymentMap[b.bookingId] || "Pending",
+        }))
+      );
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // Table Columns
@@ -184,14 +258,19 @@ const Bookings = () => {
       flex: 0.7,
       headerAlign: "center",
       align: "center",
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", height: "100%" }}>
-          <Typography>{params.value}</Typography>
-        </Box>
-      ),
     },
-    { field: "checkIn", headerName: "Check In", flex: 0.8 },
-    { field: "checkOut", headerName: "Check Out", flex: 0.8 },
+    {
+      field: "checkIn",
+      headerName: "Check In",
+      flex: 0.8,
+      renderCell: (params) => <FormattedDate value={params.value} type="date" />,
+    },
+    {
+      field: "checkOut",
+      headerName: "Check Out",
+      flex: 0.8,
+      renderCell: (params) => <FormattedDate value={params.value} type="date" />,
+    },
     {
       field: "bookingStatus",
       headerName: "Booking Status",
@@ -213,19 +292,16 @@ const Bookings = () => {
       align: "center",
       headerAlign: "center",
       renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
-          <Button
-            component={Link}
-            to={`/bookings/${params.row.id}`}
-            size="small"
-            color="info"
-            variant="outlined"
-            sx={{ minWidth: "auto", p: 0.5 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <VisibilityIcon fontSize="small" />
-          </Button>
-        </Box>
+        <Button
+          component={Link}
+          to={`/bookings/${params.row.id}`}
+          size="small"
+          color="info"
+          variant="outlined"
+          sx={{ minWidth: "auto", p: 0.5 }}
+        >
+          <VisibilityIcon fontSize="small" />
+        </Button>
       ),
     },
   ];
@@ -239,8 +315,12 @@ const Bookings = () => {
         row.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         row.roomNumber?.toString().includes(searchQuery.toLowerCase());
 
-      const matchesStatus = filterStatus ? row.bookingStatus === filterStatus : true;
-      const matchesCategory = filterCategory ? row.category === filterCategory : true;
+      const matchesStatus = filterStatus
+        ? row.bookingStatus === filterStatus
+        : true;
+      const matchesCategory = filterCategory
+        ? row.category === filterCategory
+        : true;
 
       return matchesSearch && matchesStatus && matchesCategory;
     });
@@ -261,7 +341,12 @@ const Bookings = () => {
               }}
             >
               <CardContent
-                sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", p: 3 }}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  p: 3,
+                }}
               >
                 <Box
                   sx={{
@@ -276,12 +361,14 @@ const Bookings = () => {
                 >
                   {s.icon}
                 </Box>
-
                 <Box sx={{ textAlign: "right", flex: 1, ml: 2 }}>
                   <Typography variant="body2" sx={{ opacity: 0.9 }}>
                     {s.label}
                   </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: "bold", lineHeight: 1.2 }}>
+                  <Typography
+                    variant="h5"
+                    sx={{ fontWeight: "bold", lineHeight: 1.2 }}
+                  >
                     {s.value}
                   </Typography>
                   <Typography
@@ -304,7 +391,6 @@ const Bookings = () => {
 
       {/* Filters + Table */}
       <Box sx={{ boxShadow: 3, borderRadius: 3, p: 3 }}>
-        {/* FILTERS */}
         <Box
           sx={{
             display: "flex",
@@ -316,17 +402,14 @@ const Bookings = () => {
             flexWrap: "wrap",
           }}
         >
-          {/* Search Input */}
           <Textfieldinput
             name="search"
             control={control}
             label="Search"
             placeholder="Search by Name, Room No or Email"
             fullWidth={false}
-            sx={{ minWidth: { xs: "100%", sm: 220 } }}
+            sx={{ minWidth: { xs: "100%", sm: 220 } }}
           />
-
-          {/* Status Filter */}
           <Selectinput
             name="status"
             control={control}
@@ -337,8 +420,6 @@ const Bookings = () => {
             ]}
             sx={{ minWidth: { xs: "100%", sm: 180 } }}
           />
-
-          {/* Category Filter */}
           <Selectinput
             name="category"
             control={control}
@@ -351,7 +432,6 @@ const Bookings = () => {
           />
         </Box>
 
-        {/* TABLE */}
         <Box sx={{ position: "relative" }}>
           <Customdatagriddesktop
             rows={filteredRows}
