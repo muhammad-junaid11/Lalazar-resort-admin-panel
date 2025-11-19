@@ -81,7 +81,7 @@ const Login = () => {
         </Typography>
         <Textfieldinput
           name="email"
-          label="Email"
+          label="" 
           control={control}
           rules={{
             required: "Email is required",
@@ -99,7 +99,7 @@ const Login = () => {
         </Typography>
         <Textfieldinput
           name="password"
-          label="Password"
+          label="" 
           type="password"
           control={control}
           rules={{

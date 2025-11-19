@@ -81,7 +81,7 @@ const Signup = () => {
         </Typography>
         <Textfieldinput
           name="fullName"
-          label="Full Name"
+          label="" 
           control={control}
           rules={{
             required: "Full Name is required",
@@ -99,7 +99,7 @@ const Signup = () => {
         </Typography>
         <Textfieldinput
           name="email"
-          label="Email"
+          label="" 
           control={control}
           type="email"
           rules={{
@@ -118,7 +118,7 @@ const Signup = () => {
         </Typography>
         <Textfieldinput
           name="password"
-          label="Password"
+          label="" 
           control={control}
           type="password"
           rules={{
