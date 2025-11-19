@@ -69,10 +69,10 @@ const Authlayout = ({ children }) => {
       >
         <Box mb={6} sx={{ zIndex: 1, position: "relative" }}>
           <img
-            src="/logo.webp"
+            src="/logo.jpg"
             alt="logo"
             style={{
-              height: 60,
+              height: 80,
               filter: "drop-shadow(0 0 5px rgba(0,0,0,0.5))",
             }}
           />
