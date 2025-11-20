@@ -32,7 +32,7 @@ import { useForm } from "react-hook-form";
 import Textfieldinput from "../../Components/Forms/Textfieldinput";
 import Selectinput from "../../Components/Forms/Selectinput";
 
-const statuses = ["New", "Pending", "Confirmed", "Checked Out", "Cancelled"];
+const statuses = [ "Pending", "Confirmed", "Cancelled"];
 
 const stats = [
   {
@@ -128,6 +128,7 @@ const Bookings = () => {
           roomMap[doc.id] = {
             roomNo: data.roomNo || "N/A",
             categoryName: categoryMap[data.categoryId] || "Unknown Category",
+            price: data.price || 0, // Added for totalPrice calculation
           };
         });
 
@@ -141,25 +142,14 @@ const Bookings = () => {
           };
         });
 
-        // Map payments (aggregate status per booking: Pending if any is Pending, else Paid)
-        const paymentMap = {};
+        // Map payments: Calculate total paidAmount per bookingId
+        const paymentMap = {}; // bookingId -> total paidAmount
         paymentSnap.docs.forEach((docSnap) => {
           const data = docSnap.data();
           const bookingId = data.bookingId;
           if (!bookingId) return;
-
-          const status = data.status || "Pending";
-
-          if (!paymentMap[bookingId]) {
-            paymentMap[bookingId] = [];
-          }
-          paymentMap[bookingId].push(status);
-        });
-
-        // Aggregate: if any status is "Pending", overall is "Pending", else "Paid"
-        Object.keys(paymentMap).forEach((bookingId) => {
-          const statuses = paymentMap[bookingId];
-          paymentMap[bookingId] = statuses.includes("Pending") ? "Pending" : "Paid";
+          const paidAmount = Number(data.paidAmount || 0);
+          paymentMap[bookingId] = (paymentMap[bookingId] || 0) + paidAmount;
         });
 
         // Map bookings
@@ -168,18 +158,23 @@ const Bookings = () => {
           const userData = userMap[data.userId] || {};
           let roomNumbers = [];
           let categoriesList = [];
+          let totalPrice = 0;
 
           if (Array.isArray(data.roomId)) {
             data.roomId.forEach((rid) => {
               if (roomMap[rid]) {
                 roomNumbers.push(roomMap[rid].roomNo);
                 categoriesList.push(roomMap[rid].categoryName);
+                totalPrice += roomMap[rid].price;
               }
             });
           } else if (data.roomId && roomMap[data.roomId]) {
             roomNumbers.push(roomMap[data.roomId].roomNo);
             categoriesList.push(roomMap[data.roomId].categoryName);
+            totalPrice += roomMap[data.roomId].price;
           }
+
+          const paidAmount = paymentMap[docSnap.id] || 0;
 
           return {
             id: docSnap.id,
@@ -198,7 +193,9 @@ const Bookings = () => {
             bookingStatus:
               data.status?.charAt(0).toUpperCase() + data.status?.slice(1) ||
               "New",
-            paymentStatus: paymentMap[docSnap.id] || "Pending",
+            paymentStatus: paidAmount >= totalPrice ? "Paid" : "Pending", // Corrected logic
+            totalPrice, // Store for onSnapshot use
+            paidAmount, // Store for potential display or further logic
           };
         });
 
@@ -216,32 +213,25 @@ const Bookings = () => {
   // Merge payment status from snapshot for real-time updates
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "payment"), (snapshot) => {
-      const paymentMap = {}; // bookingId → list of statuses
+      const paymentMap = {}; // bookingId -> total paidAmount
 
       snapshot.docs.forEach((docSnap) => {
         const data = docSnap.data();
         const bookingId = data.bookingId;
         if (!bookingId) return;
-
-        const status = data.status || "Pending";
-
-        if (!paymentMap[bookingId]) {
-          paymentMap[bookingId] = [];
-        }
-        paymentMap[bookingId].push(status);
-      });
-
-      // Aggregate: if any status is "Pending", overall is "Pending", else "Paid"
-      Object.keys(paymentMap).forEach((bookingId) => {
-        const statuses = paymentMap[bookingId];
-        paymentMap[bookingId] = statuses.includes("Pending") ? "Pending" : "Paid";
+        const paidAmount = Number(data.paidAmount || 0);
+        paymentMap[bookingId] = (paymentMap[bookingId] || 0) + paidAmount;
       });
 
       setBookings((prev) =>
-        prev.map((b) => ({
-          ...b,
-          paymentStatus: paymentMap[b.bookingId] || "Pending",
-        }))
+        prev.map((b) => {
+          const paidAmount = paymentMap[b.bookingId] || 0;
+          return {
+            ...b,
+            paymentStatus: paidAmount >= b.totalPrice ? "Paid" : "Pending", // Corrected logic using stored totalPrice
+            paidAmount, // Update for consistency
+          };
+        })
       );
     });
 

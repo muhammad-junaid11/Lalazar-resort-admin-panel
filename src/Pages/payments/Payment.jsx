@@ -104,26 +104,33 @@ const Payment = () => {
         });
 
         const unsubscribe = onSnapshot(collection(db, "payment"), (snapshot) => {
-          const paymentsWithPaidAmount = snapshot.docs
-            .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-            .filter((p) => p.paidAmount); // Filter for payments with paidAmount
+          const paymentsData = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
 
-          const mergedData = paymentsWithPaidAmount.map((p) => {
-            const booking = bookingsMap[p.bookingId] || {};
-            const start = booking.checkIn || null;
-            const end = booking.checkOut || null;
+          // Group payments by bookingId
+          const grouped = {};
+          paymentsData.forEach((p) => {
+            if (!grouped[p.bookingId]) grouped[p.bookingId] = [];
+            grouped[p.bookingId].push(p);
+          });
+
+          const mergedData = Object.entries(grouped).map(([bookingId, paymentsArray]) => {
+            const booking = bookingsMap[bookingId] || {};
+            const totalPaid = paymentsArray.reduce((sum, p) => sum + Number(p.paidAmount || 0), 0);
+            const totalAmount = booking.totalPrice || 0;
+
+            let status = "Pending";
+            if (paymentsArray.some(p => p.status === "Rejected")) status = "Rejected";
+            else if (totalPaid >= totalAmount) status = "Paid";
 
             return {
-              id: p.id,
+              id: bookingId,
               guestName: booking.guestName || "N/A",
               roomNo: booking.roomNumbers || "N/A",
-              startDate: start, // raw start date
-              endDate: end,     // raw end date
-              paidAmount: Number(p.paidAmount || 0), // Directly from DB
-              totalAmount: booking.totalPrice || 0, // Sum of room prices
-              status: p.status
-                ? p.status.charAt(0).toUpperCase() + p.status.slice(1).toLowerCase()
-                : "Pending",  // <-- FIX: Added .toLowerCase() for consistency
+              startDate: booking.checkIn || null,
+              endDate: booking.checkOut || null,
+              paidAmount: totalPaid,
+              totalAmount,
+              status,
             };
           });
 

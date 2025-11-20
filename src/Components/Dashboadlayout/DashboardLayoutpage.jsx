@@ -14,18 +14,27 @@ import {
   Button,
   useTheme,
   useMediaQuery,
+  Chip,  // Added import for Chip
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import HomeWorkIcon from "@mui/icons-material/HomeWork";
-import HolidayVillageIcon from '@mui/icons-material/HolidayVillage';
+import HolidayVillageIcon from "@mui/icons-material/HolidayVillage";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import BookIcon from "@mui/icons-material/Book";
-import PaymentIcon from '@mui/icons-material/Payment';
+import PaymentIcon from "@mui/icons-material/Payment";
 import PeopleIcon from "@mui/icons-material/People";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { auth } from "../../FirebaseFireStore/Firebase";
 import { signOut } from "firebase/auth";
 import { toast } from "react-toastify";
+import { useDispatch, useSelector } from "react-redux";
+import { onSnapshot, collection } from "firebase/firestore";
+import {
+  setPendingBookings,
+  setLoading,
+  setError,
+} from "../../redux/features/bookings/BookingSlice";
+import { db } from "../../FirebaseFireStore/Firebase";
 
 const drawerWidth = 240;
 
@@ -36,7 +45,11 @@ const DashboardLayoutpage = () => {
   const isLgUp = useMediaQuery(theme.breakpoints.up("lg"));
   const [drawerOpen, setDrawerOpen] = React.useState(isLgUp);
 
-  // Redirect if not logged in
+  // --- Redux hooks MUST be inside component ---
+  const dispatch = useDispatch();
+  const { pendingCount } = useSelector((state) => state.booking);
+
+  // ===== Auth Redirect =====
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (!user) navigate("/login", { replace: true });
@@ -44,10 +57,36 @@ const DashboardLayoutpage = () => {
     return () => unsubscribe();
   }, [navigate]);
 
+  // ===== Pending Bookings Snapshot =====
+  useEffect(() => {
+    dispatch(setLoading());
+
+    const unsubscribe = onSnapshot(
+      collection(db, "bookings"),
+      (snapshot) => {
+        const bookings = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        const pending = bookings.filter(
+          (b) => b.status?.toLowerCase() === "pending"
+        );
+
+        dispatch(setPendingBookings(pending));
+      },
+      (error) => {
+        dispatch(setError(error.message));
+      }
+    );
+
+    return () => unsubscribe();
+  }, [dispatch]);
+
   const menuItems = [
     { text: "Dashboard", icon: <DashboardIcon />, path: "/dashboard" },
     { text: "Bookings", icon: <BookIcon />, path: "/bookings" },
-    {text:"Payments", icon:<PaymentIcon/>,path:"/payments"},
+    { text: "Payments", icon: <PaymentIcon />, path: "/payments" },
     { text: "Rooms", icon: <HolidayVillageIcon />, path: "/rooms" },
     { text: "Room Categories", icon: <HomeWorkIcon />, path: "/rooms-categories" },
     { text: "Users", icon: <PeopleIcon />, path: "/users" },
@@ -61,9 +100,7 @@ const DashboardLayoutpage = () => {
     navigate("/login", { replace: true });
   };
 
-  // Extract first segment of path to determine active menu
   const getFirstPathSegment = (path) => path.split("/")[1] || "";
-
   const currentSegment = getFirstPathSegment(location.pathname);
 
   return (
@@ -79,12 +116,7 @@ const DashboardLayoutpage = () => {
         }}
       >
         <Toolbar>
-          <IconButton
-            color="inherit"
-            edge="start"
-            onClick={toggleDrawer}
-            sx={{ mr: 2 }}
-          >
+          <IconButton color="inherit" edge="start" onClick={toggleDrawer} sx={{ mr: 2 }}>
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap sx={{ fontWeight: "bold" }}>
@@ -148,13 +180,41 @@ const DashboardLayoutpage = () => {
                       {item.icon}
                     </ListItemIcon>
                     <ListItemText
-                      primary={item.text}
-                      primaryTypographyProps={{
-                        fontWeight: isActive ? 600 : 400,
-                        color: isActive
-                          ? theme.palette.primary.main
-                          : theme.palette.text.primary,
-                      }}
+                      primary={
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between", // Justify between: text on left, number on right
+                            width: "100%",
+                          }}
+                        >
+                          <Typography
+                            variant="body1"
+                            sx={{
+                              fontWeight: isActive ? 600 : 400,
+                              color: isActive
+                                ? theme.palette.primary.main
+                                : theme.palette.text.primary,
+                            }}
+                          >
+                            {item.text}
+                          </Typography>
+                          {/* Conditionally add a Chip with just the number, styled like StatusChip for "Pending" */}
+                          {item.text === "Bookings" && pendingCount > 0 && (
+                            <Chip
+                              label={pendingCount} // Only the number
+                              size="small"
+                              sx={{
+                                backgroundColor: theme.palette.warning.main + "33", // Semi-transparent like StatusChip for "Pending"
+                                color: theme.palette.warning.main, // Color for "Pending" status
+                                fontWeight: 600,
+                                ml: 1, // Small margin if needed
+                              }}
+                            />
+                          )}
+                        </Box>
+                      }
                     />
                   </ListItemButton>
                 </ListItem>
@@ -184,6 +244,7 @@ const DashboardLayoutpage = () => {
         </Box>
       </Drawer>
 
+      {/* ===== MAIN CONTENT ===== */}
       <Box
         component="main"
         sx={{
