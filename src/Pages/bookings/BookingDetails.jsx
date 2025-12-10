@@ -138,6 +138,7 @@ const BookingDetails = () => {
           totalAmount += Number(roomData.price || 0); // **add room price to total**
 
           return {
+            id: roomSnap.id, // Added room id to use for updating status
             roomNo: roomData.roomNo || "N/A",
             category: categoryName,
             hotel: hotelName,
@@ -192,6 +193,14 @@ const BookingDetails = () => {
     try {
       setUpdatingStatus(true);
       await updateDoc(doc(db, "bookings", id), { status: newStatus });
+
+      // ✅ If booking is approved, mark rooms as "Booked"
+      if (newStatus === "Confirmed" && booking?.roomsDetails?.length) {
+        const roomUpdates = booking.roomsDetails.map(async (room) => {
+          await updateDoc(doc(db, "rooms", room.id), { status: "Booked" });
+        });
+        await Promise.all(roomUpdates);
+      }
 
       if (newStatus === "Rejected") toast.error("Booking rejected!");
       else if (newStatus === "Confirmed") toast.success("Booking accepted!");

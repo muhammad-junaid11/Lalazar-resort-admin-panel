@@ -104,7 +104,9 @@ const Payment = () => {
         });
 
         const unsubscribe = onSnapshot(collection(db, "payment"), (snapshot) => {
-          const paymentsData = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+          const paymentsData = snapshot.docs
+            .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+            .filter(p => p.bookingId); // only include payments with a bookingId
 
           // Group payments by bookingId
           const grouped = {};
@@ -113,26 +115,35 @@ const Payment = () => {
             grouped[p.bookingId].push(p);
           });
 
-          const mergedData = Object.entries(grouped).map(([bookingId, paymentsArray]) => {
-            const booking = bookingsMap[bookingId] || {};
-            const totalPaid = paymentsArray.reduce((sum, p) => sum + Number(p.paidAmount || 0), 0);
-            const totalAmount = booking.totalPrice || 0;
+          // Merge grouped payments with bookings and filter out invalid/empty
+          const mergedData = Object.entries(grouped)
+            .filter(([bookingId, paymentsArray]) => paymentsArray && paymentsArray.length > 0)
+            .map(([bookingId, paymentsArray]) => {
+              const booking = bookingsMap[bookingId];
+              if (!booking) return null;
 
-            let status = "Pending";
-            if (paymentsArray.some(p => p.status === "Rejected")) status = "Rejected";
-            else if (totalPaid >= totalAmount) status = "Paid";
+              const totalPaid = paymentsArray.reduce(
+                (sum, p) => sum + Number(p.paidAmount || 0),
+                0
+              );
+              const totalAmount = booking.totalPrice || 0;
 
-            return {
-              id: bookingId,
-              guestName: booking.guestName || "N/A",
-              roomNo: booking.roomNumbers || "N/A",
-              startDate: booking.checkIn || null,
-              endDate: booking.checkOut || null,
-              paidAmount: totalPaid,
-              totalAmount,
-              status,
-            };
-          });
+              let status = "Pending";
+              if (paymentsArray.some((p) => p.status === "Rejected")) status = "Rejected";
+              else if (totalPaid >= totalAmount) status = "Paid";
+
+              return {
+                id: bookingId,
+                guestName: booking.guestName || "N/A",
+                roomNo: booking.roomNumbers || "N/A",
+                startDate: booking.checkIn || null,
+                endDate: booking.checkOut || null,
+                paidAmount: totalPaid,
+                totalAmount,
+                status,
+              };
+            })
+            .filter(Boolean); // remove nulls
 
           setPayments(mergedData);
           setLoading(false);
