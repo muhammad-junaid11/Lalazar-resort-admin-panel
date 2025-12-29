@@ -1,4 +1,3 @@
-// src/Dashboard/DashboardPages/RoomCategories.jsx
 import React, { useEffect, useState } from "react";
 import {
   Box,
@@ -13,51 +12,58 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
-import { db } from "../../FirebaseFireStore/Firebase";
 import { useNavigate, Link } from "react-router-dom";
+
 import ConfirmDialog from "../../Components/ConfirmDialog";
 import LoadingOverlay from "../../Components/LoadingOverlay";
+
+// ✅ SERVICES
+import {
+  fetchAllCategories,
+  deleteCategory,
+} from "../../services/CategoryService";
 
 const RoomCategories = () => {
   const theme = useTheme();
   const navigate = useNavigate();
+
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
 
+  // ---------------- Fetch categories ----------------
+  const loadCategories = async () => {
+    try {
+      setLoading(true);
+      const data = await fetchAllCategories();
+      setCategories(data);
+    } catch (err) {
+      console.error("Failed to fetch categories", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, "roomCategory"));
-        const data = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setCategories(data);
-      } catch (error) {
-        console.error("Error fetching categories:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchCategories();
+    loadCategories();
   }, []);
 
+  // ---------------- Delete category ----------------
   const handleDelete = async () => {
+    if (!selectedId) return;
+
     try {
-      await deleteDoc(doc(db, "roomCategory", selectedId));
-      setCategories((prev) => prev.filter((item) => item.id !== selectedId));
+      await deleteCategory(selectedId);
+      setCategories((prev) => prev.filter((c) => c.id !== selectedId));
       setConfirmOpen(false);
-    } catch (error) {
-      console.error("Error deleting category:", error);
+    } catch (err) {
+      console.error("Failed to delete category", err);
     }
   };
 
   return (
     <Box sx={{ flexGrow: 1, position: "relative" }}>
-      {/* ✅ Loading overlay */}
       <LoadingOverlay loading={loading} message="Loading categories..." fullScreen={true} />
 
       <Card
@@ -69,17 +75,8 @@ const RoomCategories = () => {
         }}
       >
         <CardContent sx={{ p: 2 }}>
-          <Grid
-            container
-            justifyContent="space-between"
-            alignItems="center"
-            sx={{ mb: 2 }}
-          >
-            <Typography
-              variant="h5"
-              fontWeight="bold"
-              color={theme.palette.primary.main}
-            >
+          <Grid container justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h5" fontWeight="bold" color={theme.palette.primary.main}>
               Room Categories
             </Typography>
             <Button
@@ -87,13 +84,7 @@ const RoomCategories = () => {
               startIcon={<AddIcon />}
               color="primary"
               onClick={() => navigate("/rooms-categories/add")}
-              sx={{
-                borderRadius: 2,
-                py: 1,
-                px: 2,
-                fontWeight: 600,
-                textTransform: "none",
-              }}
+              sx={{ borderRadius: 2, py: 1, px: 2, fontWeight: 600, textTransform: "none" }}
             >
               Add Category
             </Button>
@@ -117,11 +108,7 @@ const RoomCategories = () => {
               >
                 <Typography variant="body1">{cat.categoryName}</Typography>
                 <Box>
-                  <IconButton
-                    component={Link}
-                    to={`/rooms-categories/${cat.id}`}
-                    color="primary"
-                  >
+                  <IconButton component={Link} to={`/rooms-categories/${cat.id}`} color="primary">
                     <EditIcon />
                   </IconButton>
                   <IconButton

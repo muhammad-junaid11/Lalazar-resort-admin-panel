@@ -1,4 +1,3 @@
-// src/Dashboard/DashboardPages/AddEditCategory.jsx
 import React, { useEffect, useState } from "react";
 import {
   Box,
@@ -10,52 +9,77 @@ import {
   CircularProgress,
   useTheme,
 } from "@mui/material";
-import { db } from "../../FirebaseFireStore/Firebase";
-import { addDoc, collection, doc, getDoc, updateDoc } from "firebase/firestore";
 import { useNavigate, useParams } from "react-router-dom";
+
+// ✅ SERVICES
+import {
+  fetchCategoryById,
+  addCategory,
+  updateCategory,
+} from "../../services/CategoryService";
 
 const AddEditCategory = () => {
   const { id } = useParams();
   const theme = useTheme();
   const navigate = useNavigate();
-  const [categoryName, setCategoryName] = useState("");
-  const [loading, setLoading] = useState(false);
   const isEdit = Boolean(id);
 
+  const [categoryName, setCategoryName] = useState("");
+  const [loading, setLoading] = useState(isEdit);
+  const [saving, setSaving] = useState(false);
+
+  // ---------------- Fetch category for edit ----------------
   useEffect(() => {
-    const fetchCategory = async () => {
-      if (!isEdit) return;
+    if (!isEdit) {
+      setLoading(false);
+      return;
+    }
+
+    const loadCategory = async () => {
       try {
-        const docRef = doc(db, "roomCategory", id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setCategoryName(docSnap.data().categoryName);
+        const cat = await fetchCategoryById(id);
+        if (!cat) {
+          navigate("/rooms-categories");
+          return;
         }
-      } catch (error) {
-        console.error("Error fetching category:", error);
+        setCategoryName(cat.categoryName || "");
+      } catch (err) {
+        console.error("Failed to fetch category", err);
+      } finally {
+        setLoading(false);
       }
     };
-    fetchCategory();
-  }, [id, isEdit]);
 
+    loadCategory();
+  }, [id, isEdit, navigate]);
+
+  // ---------------- Submit ----------------
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!categoryName.trim()) return;
 
-    setLoading(true);
     try {
+      setSaving(true);
       if (isEdit) {
-        await updateDoc(doc(db, "roomCategory", id), { categoryName });
+        await updateCategory(id, { categoryName });
       } else {
-        await addDoc(collection(db, "roomCategory"), { categoryName });
+        await addCategory({ categoryName });
       }
       navigate("/rooms-categories");
-    } catch (error) {
-      console.error("Error saving category:", error);
+    } catch (err) {
+      console.error("Failed to save category", err);
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", mt: 10 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ flexGrow: 1, mt: 0, mb: 0, py: 1 }}>
@@ -76,11 +100,7 @@ const AddEditCategory = () => {
               mb: 2,
             }}
           >
-            <Typography
-              variant="h5"
-              fontWeight="bold"
-              color={theme.palette.primary.main}
-            >
+            <Typography variant="h5" fontWeight="bold" color={theme.palette.primary.main}>
               {isEdit ? "Edit Category" : "Add New Category"}
             </Typography>
             <Button
@@ -88,16 +108,10 @@ const AddEditCategory = () => {
               variant="contained"
               color="primary"
               form="category-form"
-              sx={{
-                borderRadius: 2,
-                py: 1,
-                px: 2,
-                fontWeight: 600,
-                textTransform: "none",
-              }}
-              disabled={loading}
+              sx={{ borderRadius: 2, py: 1, px: 2, fontWeight: 600, textTransform: "none" }}
+              disabled={saving}
             >
-              {loading ? <CircularProgress size={20} color="inherit" /> : "Save"}
+              {saving ? <CircularProgress size={20} color="inherit" /> : "Save"}
             </Button>
           </Box>
 

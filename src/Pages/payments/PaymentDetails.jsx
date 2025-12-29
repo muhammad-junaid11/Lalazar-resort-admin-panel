@@ -20,158 +20,96 @@ import {
   Paper,
 } from "@mui/material";
 import { useParams } from "react-router-dom";
-import {
-  doc,
-  getDoc,
-  addDoc,
-  collection,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  updateDoc,
-} from "firebase/firestore";
-import { db } from "../../FirebaseFireStore/Firebase";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import KeyValueBlock from "../../Components/KeyValueBlock";
 import HeaderSection from "../../Components/HeaderSection";
 import LoadingOverlay from "../../Components/LoadingOverlay";
 import StatusChip from "../../Components/StatusChip";
-import { toast, ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
 import FormattedDate from "../../Components/FormattedDate";
-// ADDED IMPORT for ImageDialog
 import ImageDialog from "../../Components/ImageDialog";
 
+// SERVICES
+import { fetchBookingByIdForUI } from "../../services/BookingService";
+import { fetchPaymentsByBookingId, addPayment, rejectPayment } from "../../services/PaymentService";
+
 const PaymentDetails = () => {
-  const { id } = useParams(); // id = bookingId now
-  const [payment, setPayment] = useState(null);
+  const { id } = useParams(); // bookingId
   const [booking, setBooking] = useState(null);
+  const [payment, setPayment] = useState(null);
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [partialDialogOpen, setPartialDialogOpen] = useState(false);
   const [partialAmount, setPartialAmount] = useState("");
   const [helperText, setHelperText] = useState("");
-  // ADDED STATE for ImageDialog
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
 
-  const fetchPaymentDetails = async () => {
-    setLoading(true);
-    try {
-      // Fetch booking
-      const bookingSnap = await getDoc(doc(db, "bookings", id));
-      if (!bookingSnap.exists()) {
-        setBooking(null);
-        setPayment(null);
-        setPaymentHistory([]);
-        return;
-      }
-      const bookingData = bookingSnap.data();
-      bookingData.id = bookingSnap.id;
-
-      // Rooms
-      const roomIds = Array.isArray(bookingData.roomId)
-        ? bookingData.roomId
-        : bookingData.roomId
-        ? [bookingData.roomId]
-        : [];
-      let totalPrice = 0;
-      const roomNumbers = [];
-      for (const rid of roomIds) {
-        const roomSnap = await getDoc(doc(db, "rooms", rid));
-        if (roomSnap.exists()) {
-          const roomData = roomSnap.data();
-          totalPrice += roomData.price || 0;
-          roomNumbers.push(roomData.roomNo || "N/A");
-        }
-      }
-
-      // User
-      let userName = "N/A";
-      if (bookingData.userId) {
-        const userSnap = await getDoc(doc(db, "users", bookingData.userId));
-        if (userSnap.exists)
-          userName =
-            userSnap.data().userName || userSnap.data().fullName || "N/A";
-      }
-
-      const standardizedCheckIn =
-        bookingData.checkIn || bookingData.checkInDate;
-      const standardizedCheckOut =
-        bookingData.checkOut || bookingData.checkOutDate;
-
-      setBooking({
-        ...bookingData,
-        guestName: userName,
-        roomNumbers: roomNumbers.join(", "),
-        standardizedCheckIn,
-        standardizedCheckOut,
-        totalPrice,
-      });
-
-      // Fetch all payments for this booking
-      const paymentsQuery = query(
-        collection(db, "payment"),
-        where("bookingId", "==", bookingSnap.id),
-        orderBy("paymentDate", "asc")
-      );
-      const paymentDocs = await getDocs(paymentsQuery);
-      const allPayments = paymentDocs.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      }));
-
-      setPaymentHistory(allPayments); // Set payment history
-
-      const paidAmountSum = allPayments.reduce(
-        (sum, d) => sum + Number(d.paidAmount || 0),
-        0
-      );
-
-      const lastPayment = allPayments.length
-        ? allPayments[allPayments.length - 1]
-        : null;
-
-      setPayment({
-        id: bookingSnap.id,
-        totalAmount: totalPrice,
-        paidAmount: paidAmountSum,
-        status:
-          paidAmountSum >= totalPrice
-            ? "Paid"
-            : lastPayment?.status || "Pending",
-        paymentType: lastPayment?.paymentType || "Cash",
-      });
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to fetch payment details");
-    } finally {
-      setLoading(false);
+  // ==================== UPDATED fetchDetails ====================
+  const fetchDetails = async () => {
+  setLoading(true);
+  try {
+    // Booking info
+    const bookingData = await fetchBookingByIdForUI(id);
+    if (!bookingData) {
+      setBooking(null);
+      setPayment(null);
+      setPaymentHistory([]);
+      return;
     }
-  };
+    setBooking(bookingData);
+
+    // Fetch all payments for this booking
+    const paymentHistoryArray = await fetchPaymentsByBookingId(id);
+    setPaymentHistory(paymentHistoryArray);
+
+    // Sum of paid amounts
+    const totalPaid = paymentHistoryArray.reduce((sum, p) => sum + Number(p.paidAmount || 0), 0);
+
+    // Get totalAmount from the latest payment (if exists), otherwise fallback to booking total
+    const latestPayment = paymentHistoryArray[paymentHistoryArray.length - 1];
+    const totalAmount = latestPayment ? Number(latestPayment.totalAmount || 0) : Number(bookingData.totalAmount || 0);
+
+    setPayment({
+      paidAmount: totalPaid,
+      totalAmount: totalAmount,
+      status: totalPaid >= totalAmount && totalAmount > 0 ? "Paid" : "Pending",
+    });
+
+  } catch (err) {
+    console.error(err);
+    toast.error("Failed to fetch payment details");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   useEffect(() => {
-    fetchPaymentDetails();
+    fetchDetails();
   }, [id]);
 
+  const hasOutstandingBalance = payment?.totalAmount > payment?.paidAmount;
+
   const handleMarkPaid = async () => {
-    if (!payment || !booking) return;
+    if (!booking || !payment) return;
+
     try {
       setUpdatingStatus(true);
-      const remaining = booking.totalPrice - payment.paidAmount;
+      const remaining = payment.totalAmount - payment.paidAmount;
       if (remaining <= 0) return;
 
-      await addDoc(collection(db, "payment"), {
+      await addPayment({
         bookingId: booking.id,
         label: "Final Payment",
         paidAmount: remaining,
-        paymentDate: new Date(),
+        totalAmount: payment.totalAmount,
         paymentType: "Cash",
         status: "Paid",
       });
 
       toast.success("Payment marked as PAID!");
-      fetchPaymentDetails();
+      fetchDetails();
     } catch (err) {
       console.error(err);
       toast.error("Failed to mark as PAID");
@@ -181,14 +119,15 @@ const PaymentDetails = () => {
   };
 
   const handlePartialPayment = async () => {
-    if (!payment || !booking) return;
+    if (!booking || !payment) return;
+
     const partial = Number(partialAmount);
     if (isNaN(partial) || partial <= 0) {
       toast.error("Enter valid positive number");
       return;
     }
 
-    const remaining = booking.totalPrice - payment.paidAmount;
+    const remaining = payment.totalAmount - payment.paidAmount;
     if (partial > remaining) {
       toast.error(`Amount cannot exceed remaining balance (${remaining})`);
       return;
@@ -197,41 +136,29 @@ const PaymentDetails = () => {
     try {
       setUpdatingStatus(true);
 
-      // Fetch previous payments to calculate "Advance X"
-      const paymentsQuery = query(
-        collection(db, "payment"),
-        where("bookingId", "==", booking.id),
-        orderBy("paymentDate", "asc")
-      );
-      const paymentDocs = await getDocs(paymentsQuery);
-      const partialCount = paymentDocs.docs.filter((d) =>
-        d.data().label?.startsWith("Advance")
-      ).length;
-
+      // Determine label
       let label = "";
-      if (partial + payment.paidAmount >= booking.totalPrice) {
+      if (partial + payment.paidAmount >= payment.totalAmount) {
         label = "Final Payment";
       } else {
-        label = `Advance ${partialCount + 1}`;
+        const advanceCount = paymentHistory.filter(p => p.label?.startsWith("Advance")).length;
+        label = `Advance ${advanceCount + 1}`;
       }
 
-      await addDoc(collection(db, "payment"), {
+      await addPayment({
         bookingId: booking.id,
         label,
         paidAmount: partial,
-        paymentDate: new Date(),
+        totalAmount: payment.totalAmount,
         paymentType: "Cash",
-        status:
-          partial + payment.paidAmount >= booking.totalPrice
-            ? "Paid"
-            : "Pending",
+        status: partial + payment.paidAmount >= payment.totalAmount ? "Paid" : "Pending",
       });
 
-      toast.success(`${label} recorded!`);
+      toast.success("Partial payment recorded!");
       setPartialDialogOpen(false);
       setPartialAmount("");
       setHelperText("");
-      fetchPaymentDetails();
+      fetchDetails();
     } catch (err) {
       console.error(err);
       toast.error("Failed to add partial payment");
@@ -242,11 +169,15 @@ const PaymentDetails = () => {
 
   const handleReject = async () => {
     if (!payment) return;
+
     try {
       setUpdatingStatus(true);
-      await updateDoc(doc(db, "payment", id), { status: "Rejected" }); // You may want to reject all payments of this booking instead
+      const paymentsArray = await fetchPaymentsByBookingId(id);
+      for (const p of paymentsArray) {
+        await rejectPayment(p.id);
+      }
       toast.success("Payment rejected!");
-      fetchPaymentDetails();
+      fetchDetails();
     } catch (err) {
       console.error(err);
       toast.error("Failed to reject payment");
@@ -255,28 +186,39 @@ const PaymentDetails = () => {
     }
   };
 
-  const handlePartialAmountChange = (e) => {
-    const value = Number(e.target.value);
-    const maxAllowed = booking ? booking.totalPrice - payment.paidAmount : 0;
-    
-    // Only update state if it's a valid number or empty string
-    if (!isNaN(value) || e.target.value === "") {
-        setPartialAmount(e.target.value);
-    }
+const handlePartialAmountChange = (e) => {
+  const inputValue = e.target.value;
+  const value = Number(inputValue);
+  
+  // Calculate remaining balance
+  const maxAllowed = payment ? payment.totalAmount - payment.paidAmount : 0;
 
-    if (value > maxAllowed) {
-      setHelperText(`Amount cannot exceed remaining balance (${maxAllowed})`);
-    } else {
-      setHelperText("");
-    }
-  };
+  // 1. Always allow empty string so user can backspace
+  if (inputValue === "") {
+    setPartialAmount("");
+    setHelperText("");
+    return;
+  }
 
-  const hasOutstandingBalance = payment?.totalAmount > payment?.paidAmount;
+  // 2. Block the update if the value exceeds balance
+  if (value > maxAllowed) {
+    setHelperText(`Amount cannot exceed remaining balance (${maxAllowed})`);
+    // OPTIONAL: If you want to strictly block the typing, don't call setPartialAmount
+    // But usually, it's better to set the max value or just show the error.
+    // To match your "block" request:
+    return; 
+  }
+
+  // 3. Update state if valid
+  if (!isNaN(value)) {
+    setPartialAmount(inputValue);
+    setHelperText("");
+  }
+};
 
   if (loading)
-    return (
-      <LoadingOverlay loading message="Loading payment details..." fullScreen />
-    );
+    return <LoadingOverlay loading message="Loading payment details..." fullScreen />;
+
   if (!payment || !booking)
     return (
       <Typography variant="h6" sx={{ textAlign: "center", mt: 5 }}>
@@ -287,27 +229,12 @@ const PaymentDetails = () => {
   return (
     <Box sx={{ flexGrow: 1, mt: 0, mb: 0, py: 1 }}>
       <ToastContainer position="top-right" autoClose={3000} />
-      <LoadingOverlay
-        loading={updatingStatus}
-        message="Processing..."
-        fullScreen
-      />
+      <LoadingOverlay loading={updatingStatus} message="Processing..." fullScreen />
 
       <Card sx={{ borderRadius: 3, boxShadow: 4, mb: 4 }}>
         <CardContent sx={{ px: { xs: 2, sm: 4, md: 6 } }}>
-          <Box
-            sx={{
-              mb: 3,
-              display: "flex",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: 2,
-            }}
-          >
-            <Typography variant="h5" sx={{ fontWeight: "bold" }}>
-              Payment Detail
-            </Typography>
+          <Box sx={{ mb: 3, display: "flex", justifyContent: "space-between", flexWrap: "wrap", alignItems: "center", gap: 2 }}>
+            <Typography variant="h5" sx={{ fontWeight: "bold" }}>Payment Detail</Typography>
             <StatusChip label={payment.status} isPayment />
           </Box>
 
@@ -315,12 +242,7 @@ const PaymentDetails = () => {
             <Button
               variant="contained"
               color="success"
-              disabled={
-                updatingStatus ||
-                !hasOutstandingBalance ||
-                payment.status === "Paid" ||
-                payment.status === "Rejected"
-              }
+              disabled={updatingStatus || !hasOutstandingBalance || payment.status === "Paid" || payment.status === "Rejected"}
               onClick={handleMarkPaid}
             >
               Mark Paid
@@ -328,12 +250,7 @@ const PaymentDetails = () => {
             <Button
               variant="contained"
               color="warning"
-              disabled={
-                updatingStatus ||
-                !hasOutstandingBalance ||
-                payment.status === "Paid" ||
-                payment.status === "Rejected"
-              }
+              disabled={updatingStatus || !hasOutstandingBalance || payment.status === "Paid" || payment.status === "Rejected"}
               onClick={() => setPartialDialogOpen(true)}
             >
               Partial Payment
@@ -341,11 +258,7 @@ const PaymentDetails = () => {
             <Button
               variant="contained"
               color="error"
-              disabled={
-                updatingStatus ||
-                payment.status === "Paid" ||
-                payment.status === "Rejected"
-              }
+              disabled={updatingStatus || payment.status === "Paid" || payment.status === "Rejected"}
               onClick={handleReject}
             >
               Reject
@@ -355,58 +268,34 @@ const PaymentDetails = () => {
           <HeaderSection title="Guest & Booking Information" />
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock
-                label="Guest Name"
-                value={booking?.guestName || "N/A"}
-              />
+              <KeyValueBlock label="Guest Name" value={booking.guestName || "N/A"} />
             </Grid>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock
-                label="Room Number(s)"
-                value={booking?.roomNumbers || "N/A"}
-              />
+              <KeyValueBlock label="Room Number(s)" value={booking.roomNumbers || "N/A"} />
             </Grid>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock label="Check-in">
-                <FormattedDate value={booking?.standardizedCheckIn} showTime />
-              </KeyValueBlock>
+              <KeyValueBlock label="Check-in"><FormattedDate value={booking.checkIn} showTime /></KeyValueBlock>
             </Grid>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock label="Check-out">
-                <FormattedDate value={booking?.standardizedCheckOut} showTime />
-              </KeyValueBlock>
+              <KeyValueBlock label="Check-out"><FormattedDate value={booking.checkOut} showTime /></KeyValueBlock>
             </Grid>
           </Grid>
 
           <HeaderSection title="Payment Information" />
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock
-                label="Paid Amount"
-                value={payment.paidAmount || 0}
-              />
+              <KeyValueBlock label="Paid Amount" value={payment.paidAmount} />
             </Grid>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-              <KeyValueBlock
-                label="Total Amount"
-                value={payment.totalAmount || 0}
-              />
+              <KeyValueBlock label="Total Amount" value={payment.totalAmount || "--"} />
             </Grid>
-            {/* UPDATED: Use Button to trigger ImageDialog */}
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
               <KeyValueBlock label="Payment Receipt">
                 {paymentHistory.length > 0 && paymentHistory[0].receiptPath ? (
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    sx={{ mt: 1, px: 2, maxWidth: 180, minWidth: 100, textTransform: "none" }}
-                    onClick={() => setReceiptDialogOpen(true)}
-                  >
+                  <Button variant="contained" color="primary" onClick={() => setReceiptDialogOpen(true)}>
                     Show Receipt
                   </Button>
-                ) : (
-                  "--"
-                )}
+                ) : "--"}
               </KeyValueBlock>
             </Grid>
           </Grid>
@@ -417,33 +306,23 @@ const PaymentDetails = () => {
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell>
-                      <strong>Payment Description</strong>
-                    </TableCell>
-                    <TableCell>
-                      <strong>Paid Amount</strong>
-                    </TableCell>
-                    <TableCell>
-                      <strong>Payment Type</strong>
-                    </TableCell>
-                    <TableCell>
-                      <strong>Date</strong>
-                    </TableCell>
+                    <TableCell><strong>Payment Description</strong></TableCell>
+                    <TableCell><strong>Paid Amount</strong></TableCell>
+                    <TableCell><strong>Payment Type</strong></TableCell>
+                    <TableCell><strong>Date</strong></TableCell>
+                    <TableCell><strong>Status</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {paymentHistory
-                    // Keep all payments with a label or paidAmount > 0
-                    .filter(p => p.label || Number(p.paidAmount) > 0)
-                    .map((p, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{p.label || 'N/A'}</TableCell>
-                        <TableCell>{p.paidAmount || 0}</TableCell>
-                        <TableCell>{p.paymentType || 'N/A'}</TableCell>
-                        <TableCell><FormattedDate value={p.paymentDate} showTime /></TableCell>
-                      </TableRow>
-                    ))
-                  }
+                  {paymentHistory.map((p, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{p.label || "N/A"}</TableCell>
+                      <TableCell>{p.paidAmount}</TableCell>
+                      <TableCell>{p.paymentType || "N/A"}</TableCell>
+                      <TableCell><FormattedDate value={p.paymentDate} showTime /></TableCell>
+                      <TableCell>{p.status || "Pending"}</TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -455,12 +334,7 @@ const PaymentDetails = () => {
         </CardContent>
       </Card>
 
-      <Dialog
-        open={partialDialogOpen}
-        onClose={() => setPartialDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
+      <Dialog open={partialDialogOpen} onClose={() => setPartialDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Enter Partial Payment Amount</DialogTitle>
         <DialogContent>
           <TextField
@@ -471,33 +345,19 @@ const PaymentDetails = () => {
             fullWidth
             value={partialAmount}
             onChange={handlePartialAmountChange}
-            helperText={helperText || `Remaining balance: ${booking?.totalPrice - payment?.paidAmount}`}
+            helperText={helperText || `Remaining balance: ${payment?.totalAmount - payment?.paidAmount}`}
             error={!!helperText}
-            inputProps={{
-              min: 0,
-              step: 0.01,
-            }}
-            onKeyDown={(e) => {
-              if (["e", "E", "+", "-"].includes(e.key)) e.preventDefault();
-            }}
+            inputProps={{ min: 0, step: 0.01 }}
+            onKeyDown={e => { if (["e","E","+","-"].includes(e.key)) e.preventDefault(); }}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPartialDialogOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handlePartialPayment}>
-            Submit
-          </Button>
+          <Button variant="contained" onClick={handlePartialPayment}>Submit</Button>
         </DialogActions>
       </Dialog>
-      
-      {/* ADDED ImageDialog Component */}
-      <ImageDialog
-        open={receiptDialogOpen}
-        onClose={() => setReceiptDialogOpen(false)}
-        title="Payment Receipt"
-        // Safely access the receiptPath from the first payment in history
-        imageSrc={paymentHistory.length > 0 ? paymentHistory[0].receiptPath : null}
-      />
+
+      <ImageDialog open={receiptDialogOpen} onClose={() => setReceiptDialogOpen(false)} title="Payment Receipt" imageSrc={paymentHistory.length > 0 ? paymentHistory[0].receiptPath : null} />
     </Box>
   );
 };

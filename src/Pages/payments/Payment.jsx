@@ -10,15 +10,16 @@ import {
 } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import { useTheme } from "@mui/material/styles";
-import { collection, getDocs, onSnapshot } from "firebase/firestore";
-import { db } from "../../FirebaseFireStore/Firebase";
+import { Link } from "react-router-dom";
+import { useForm } from "react-hook-form";
+
 import Customdatagriddesktop from "../../Components/Customdatagriddesktop";
 import StatusChip from "../../Components/StatusChip";
-import { useForm } from "react-hook-form";
 import Textfieldinput from "../../Components/Forms/Textfieldinput";
 import Selectinput from "../../Components/Forms/Selectinput";
-import { Link } from "react-router-dom";
-import FormattedDate from "../../Components/FormattedDate"; // your date component
+import FormattedDate from "../../Components/FormattedDate";
+import { fetchPaymentsForUI } from "../../services/PaymentService";
+
 
 const Payment = () => {
   const [payments, setPayments] = useState([]);
@@ -36,127 +37,19 @@ const Payment = () => {
   const filterStatus = watch("status");
 
   useEffect(() => {
-    const fetchAllData = async () => {
+    const fetchData = async () => {
       setLoading(true);
       try {
-        // Fetch static collections once
-        const [roomsSnap, usersSnap, categoriesSnap, bookingSnap] =
-          await Promise.all([
-            getDocs(collection(db, "rooms")),
-            getDocs(collection(db, "users")),
-            getDocs(collection(db, "roomCategory")),
-            getDocs(collection(db, "bookings")),
-          ]);
-
-        // Map categories
-        const categoryMap = {};
-        categoriesSnap.docs.forEach((doc) => {
-          categoryMap[doc.id] = doc.data().categoryName || "Unknown";
-        });
-
-        // Map rooms
-        const roomMap = {};
-        roomsSnap.docs.forEach((doc) => {
-          const data = doc.data();
-          roomMap[doc.id] = {
-            roomNo: data.roomNo || "N/A",
-            price: data.price || 0,
-            categoryName: categoryMap[data.categoryId] || "Unknown Category",
-          };
-        });
-
-        // Map users
-        const userMap = {};
-        usersSnap.docs.forEach((doc) => {
-          const data = doc.data();
-          userMap[doc.id] = {
-            userName: data.userName || data.fullName || "Unknown User",
-            userEmail: data.userEmail || data.email || "N/A",
-          };
-        });
-
-        // Map bookings
-        const bookingsMap = {};
-        bookingSnap.docs.forEach((docSnap) => {
-          const data = docSnap.data();
-          let roomNumbers = [];
-          let totalRoomPrice = 0;
-          const roomIds = Array.isArray(data.roomId)
-            ? data.roomId
-            : data.roomId
-            ? [data.roomId]
-            : [];
-
-          roomIds.forEach((rid) => {
-            if (roomMap[rid]) {
-              roomNumbers.push(roomMap[rid].roomNo);
-              totalRoomPrice += roomMap[rid].price; // sum all room prices
-            }
-          });
-
-          bookingsMap[docSnap.id] = {
-            guestName: userMap[data.userId]?.userName || "Unknown",
-            checkIn: data.checkInDate || data.checkIn,
-            checkOut: data.checkOutDate || data.checkOut,
-            roomNumbers: roomNumbers.join(", ") || "N/A",
-            totalPrice: totalRoomPrice,
-          };
-        });
-
-        const unsubscribe = onSnapshot(collection(db, "payment"), (snapshot) => {
-          const paymentsData = snapshot.docs
-            .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
-            .filter(p => p.bookingId); // only include payments with a bookingId
-
-          // Group payments by bookingId
-          const grouped = {};
-          paymentsData.forEach((p) => {
-            if (!grouped[p.bookingId]) grouped[p.bookingId] = [];
-            grouped[p.bookingId].push(p);
-          });
-
-          // Merge grouped payments with bookings and filter out invalid/empty
-          const mergedData = Object.entries(grouped)
-            .filter(([bookingId, paymentsArray]) => paymentsArray && paymentsArray.length > 0)
-            .map(([bookingId, paymentsArray]) => {
-              const booking = bookingsMap[bookingId];
-              if (!booking) return null;
-
-              const totalPaid = paymentsArray.reduce(
-                (sum, p) => sum + Number(p.paidAmount || 0),
-                0
-              );
-              const totalAmount = booking.totalPrice || 0;
-
-              let status = "Pending";
-              if (paymentsArray.some((p) => p.status === "Rejected")) status = "Rejected";
-              else if (totalPaid >= totalAmount) status = "Paid";
-
-              return {
-                id: bookingId,
-                guestName: booking.guestName || "N/A",
-                roomNo: booking.roomNumbers || "N/A",
-                startDate: booking.checkIn || null,
-                endDate: booking.checkOut || null,
-                paidAmount: totalPaid,
-                totalAmount,
-                status,
-              };
-            })
-            .filter(Boolean); // remove nulls
-
-          setPayments(mergedData);
-          setLoading(false);
-        });
-
-        return () => unsubscribe();
+        const paymentsData = await fetchPaymentsForUI();
+        setPayments(paymentsData);
       } catch (err) {
         console.error("Failed to fetch payments:", err);
+      } finally {
         setLoading(false);
       }
     };
 
-    fetchAllData();
+    fetchData();
   }, []);
 
   const columns = [
@@ -171,8 +64,8 @@ const Payment = () => {
       filterable: false,
       renderCell: (params) => (
         <span>
-          <FormattedDate value={params.row.startDate} type="date" /> →{" "}
-          <FormattedDate value={params.row.endDate} type="date" />
+          <FormattedDate value={params.row.checkIn} type="date" /> →{" "}
+          <FormattedDate value={params.row.checkOut} type="date" />
         </span>
       ),
     },
@@ -180,7 +73,7 @@ const Payment = () => {
       field: "status",
       headerName: "Status",
       flex: 1,
-      renderCell: (params) => <StatusChip label={params.value} />,
+      renderCell: (params) => <StatusChip label={params.row.paymentStatus} />,
     },
     {
       field: "actions",
@@ -199,7 +92,7 @@ const Payment = () => {
           }}
         >
           <Stack direction="row" spacing={1}>
-            <Link to={`/payments/${params.row.id}`} style={{ textDecoration: "none" }}>
+            <Link to={`/payments/${params.row.bookingId}`} style={{ textDecoration: "none" }}>
               <Button size="small" variant="outlined" color="info">
                 <VisibilityIcon fontSize="small" />
               </Button>
@@ -215,7 +108,7 @@ const Payment = () => {
       const searchValue = filterGuest.toLowerCase();
       const matchesGuest = row.guestName?.toLowerCase().includes(searchValue);
       const matchesRoom = row.roomNo?.toLowerCase().includes(searchValue);
-      const matchesStatus = filterStatus ? row.status === filterStatus : true;
+      const matchesStatus = filterStatus ? row.paymentStatus === filterStatus : true;
       return (matchesGuest || matchesRoom) && matchesStatus;
     });
   }, [payments, filterGuest, filterStatus]);
@@ -224,7 +117,6 @@ const Payment = () => {
     <Box>
       <Card sx={{ borderRadius: 3, boxShadow: 3 }}>
         <CardContent>
-          {/* Filters Top-Right */}
           <Grid container justifyContent="flex-end" spacing={2} sx={{ mb: 2 }}>
             <Grid item>
               <Textfieldinput
@@ -257,7 +149,7 @@ const Payment = () => {
               columns={columns}
               pageSizeOptions={[5, 10, 20]}
               defaultPageSize={10}
-              getRowId={(row) => row.id}
+              getRowId={(row) => row.bookingId}
               loading={loading}
             />
           </Box>

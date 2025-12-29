@@ -11,16 +11,6 @@ import {
 } from "@mui/material";
 import { useParams } from "react-router-dom";
 import ImageDialog from "../../Components/ImageDialog";
-import {
-  doc,
-  getDoc,
-  collection,
-  getDocs,
-  query,
-  where,
-  updateDoc,
-} from "firebase/firestore";
-import { db } from "../../FirebaseFireStore/Firebase";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import ConfirmDialog from "../../Components/ConfirmDialog";
@@ -29,6 +19,9 @@ import HeaderSection from "../../Components/HeaderSection";
 import LoadingOverlay from "../../Components/LoadingOverlay";
 import StatusChip from "../../Components/StatusChip";
 import FormattedDate from "../../Components/FormattedDate";
+
+// ✅ Import the services
+import { fetchBookingByIdForUI, updateBookingStatus,updateBookingStatusWithRooms } from "../../services/BookingService";
 
 const BookingDetails = () => {
   const { id } = useParams();
@@ -41,143 +34,26 @@ const BookingDetails = () => {
   const [dialogAction, setDialogAction] = useState(null);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
 
-  const parseTimestamp = (value) => {
-    if (!value) return null;
-    if (value.seconds !== undefined && value.nanoseconds !== undefined) {
-      return new Date(value.seconds * 1000);
-    } else if (value instanceof Date) {
-      return value;
-    } else if (typeof value === "string") {
-      return new Date(value);
-    } else {
-      return null;
-    }
-  };
-
   const fetchBookingDetails = async () => {
     try {
       setLoading(true);
-      const bookingRef = doc(db, "bookings", id);
-      const bookingSnap = await getDoc(bookingRef);
-      if (!bookingSnap.exists()) {
+      
+      const data = await fetchBookingByIdForUI(id);
+
+      if (!data) {
         setBooking(null);
         return;
       }
-      const bookingData = bookingSnap.data();
-      const bookingDocId = bookingSnap.id;
-
-      let userData = {};
-      if (bookingData.userId) {
-        const userSnap = await getDoc(doc(db, "users", bookingData.userId));
-        if (userSnap.exists) userData = userSnap.data();
-      }
-
-      const paymentRef = collection(db, "payment");
-      const paymentQuery = query(
-        paymentRef,
-        where("bookingId", "==", bookingDocId)
-      );
-      const paymentSnap = await getDocs(paymentQuery);
-
-      let totalAmount = 0; // **manual total amount**
-      let paymentDate = "--";
-      let paymentMethod = bookingData.paymentMethod || "--";
-      let paymentStatus = "Pending";
-      let paymentId = "--";
-      let paymentReceiptUrl = "";
-
-      if (!paymentSnap.empty) {
-        let latestPaymentTimestamp = 0;
-        let latestPaymentData = null;
-
-        paymentSnap.docs.forEach((payDoc) => {
-          const payData = payDoc.data();
-          if (payData.receiptPath) paymentReceiptUrl = payData.receiptPath;
-
-          const paymentTimestamp = payData.paymentDate?.seconds || 0;
-          if (paymentTimestamp >= latestPaymentTimestamp) {
-            latestPaymentTimestamp = paymentTimestamp;
-            latestPaymentData = payData;
-            paymentId = payDoc.id;
-          }
-        });
-
-        if (latestPaymentData) {
-          paymentMethod = latestPaymentData.paymentType || paymentMethod;
-          paymentStatus = latestPaymentData.status
-            ? latestPaymentData.status.charAt(0).toUpperCase() +
-              latestPaymentData.status.slice(1)
-            : "Pending";
-          paymentDate = latestPaymentData.paymentDate || null;
-        }
-      }
-
-      // Fetch room details and calculate **manual total amount**
-      let roomsDetails = [];
-      if (Array.isArray(bookingData.roomId) && bookingData.roomId.length > 0) {
-        const roomPromises = bookingData.roomId.map(async (roomId) => {
-          const roomSnap = await getDoc(doc(db, "rooms", roomId));
-          if (!roomSnap.exists) return null;
-          const roomData = roomSnap.data();
-
-          let categoryName = "--";
-          if (roomData.categoryId) {
-            const categorySnap = await getDoc(
-              doc(db, "roomCategory", roomData.categoryId)
-            );
-            if (categorySnap.exists)
-              categoryName = categorySnap.data().categoryName;
-          }
-
-          let hotelName = "--";
-          if (roomData.hotelId) {
-            const hotelSnap = await getDoc(doc(db, "hotel", roomData.hotelId));
-            if (hotelSnap.exists) hotelName = hotelSnap.data().hotelName;
-          }
-
-          totalAmount += Number(roomData.price || 0); // **add room price to total**
-
-          return {
-            id: roomSnap.id, // Added room id to use for updating status
-            roomNo: roomData.roomNo || "N/A",
-            category: categoryName,
-            hotel: hotelName,
-            price: roomData.price || 0, // optional
-          };
-        });
-
-        roomsDetails = (await Promise.all(roomPromises)).filter(Boolean);
-      }
 
       setBooking({
-        id: bookingDocId,
-        bookingId: bookingDocId,
-        bookingStatus:
-          bookingData.status?.charAt(0).toUpperCase() +
-            bookingData.status?.slice(1) || "New",
-        userName: userData.userName || userData.fullName || "N/A",
-        gender: userData.gender || "N/A",
-        dob: userData.dob || null,
-        number: userData.number || "--",
-        email: userData.email || userData.userEmail || "--",
-        address: userData.address || "--",
-        idProof: userData.idProof || "--",
-        userId: bookingData.userId || "--",
-        roomsDetails,
-        paymentId,
-        totalAmount, // **calculated manually**
-        paymentMethod,
-        paymentStatus,
-        paymentDate,
-        paymentReceipt: paymentReceiptUrl,
-        persons: bookingData.persons || "--",
-        checkIn: bookingData.checkInDate || null,
-        checkOut: bookingData.checkOutDate || null,
-        adminId: bookingData.adminId || "--",
-        secondaryEmail: bookingData.secondaryEmail || "--",
+        ...data,
+        userName: data.guestName || "N/A",
+        number: data.number || "--",  
+        paymentDate: data.paymentDate || null,
+        paymentReceipt: data.paymentReceipt || "",
       });
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Error fetching details:", error);
       toast.error("Failed to fetch booking details");
       setBooking(null);
     } finally {
@@ -190,31 +66,25 @@ const BookingDetails = () => {
   }, [id]);
 
   const handleStatusUpdate = async (newStatus) => {
-    try {
-      setUpdatingStatus(true);
-      await updateDoc(doc(db, "bookings", id), { status: newStatus });
+  try {
+    setUpdatingStatus(true);
 
-      // ✅ If booking is approved, mark rooms as "Booked"
-      if (newStatus === "Confirmed" && booking?.roomsDetails?.length) {
-        const roomUpdates = booking.roomsDetails.map(async (room) => {
-          await updateDoc(doc(db, "rooms", room.id), { status: "Booked" });
-        });
-        await Promise.all(roomUpdates);
-      }
+    await updateBookingStatusWithRooms(id, newStatus, booking?.roomsDetails || []);
 
-      if (newStatus === "Rejected") toast.error("Booking rejected!");
-      else if (newStatus === "Confirmed") toast.success("Booking accepted!");
+    if (newStatus === "Rejected") toast.error("Booking rejected!");
+    else if (newStatus === "Confirmed") toast.success("Booking accepted!");
 
-      setBooking((prev) =>
-        prev ? { ...prev, bookingStatus: newStatus } : prev
-      );
-    } catch (error) {
-      console.error("Error updating booking status:", error);
-      toast.error("Failed to update status");
-    } finally {
-      setUpdatingStatus(false);
-    }
-  };
+    setBooking((prev) =>
+      prev ? { ...prev, bookingStatus: newStatus } : prev
+    );
+  } catch (error) {
+    console.error("Error updating status:", error);
+    toast.error("Failed to update status");
+  } finally {
+    setUpdatingStatus(false);
+    setDialogOpen(false);
+  }
+};
 
   if (loading)
     return (
@@ -324,6 +194,7 @@ const BookingDetails = () => {
               />
             </Grid>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
+              {/* Fixed: use booking.number instead of booking.phone */}
               <KeyValueBlock label="Phone No" value={booking.number} />
             </Grid>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
@@ -344,7 +215,7 @@ const BookingDetails = () => {
               justifyContent: "flex-start",
             }}
           >
-            {booking.roomsDetails.map((room, idx) => (
+            {booking.roomsDetails && booking.roomsDetails.map((room, idx) => (
               <Card
                 key={idx}
                 sx={{
@@ -370,8 +241,8 @@ const BookingDetails = () => {
                   Room {idx + 1}
                 </Typography>
                 <Typography>Room Number: {room.roomNo}</Typography>
-                <Typography>Category: {room.category}</Typography>
-                <Typography>Hotel: {room.hotel}</Typography>
+                <Typography>Category: {room.categoryName || room.category}</Typography>
+                <Typography>Hotel: {room.hotelName || room.hotel}</Typography>
                 <Typography>Price: {room.price}</Typography>
               </Card>
             ))}
@@ -403,12 +274,11 @@ const BookingDetails = () => {
             </Grid>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
               <KeyValueBlock label="Payment Date">
-                {booking.paymentDate && (
+                {booking.paymentDate ? (
                   <Box sx={{ display: "flex", flexDirection: "column" }}>
-                    <FormattedDate value={booking.paymentDate} type="date" />
                     <FormattedDate value={booking.paymentDate} type="time" />
                   </Box>
-                )}
+                ) : "--"}
               </KeyValueBlock>
             </Grid>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>

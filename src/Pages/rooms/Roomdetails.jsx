@@ -1,4 +1,3 @@
-// src/Dashboard/DashboardPages/RoomDetails.jsx
 import React, { useEffect, useState } from "react";
 import {
   Box,
@@ -9,19 +8,14 @@ import {
   useTheme,
 } from "@mui/material";
 import { useParams } from "react-router-dom";
-import {
-  doc,
-  getDoc,
-  collection,
-  query,
-  where,
-  getDocs,
-  documentId,
-} from "firebase/firestore";
-import { db } from "../../FirebaseFireStore/Firebase";
-
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay } from "date-fns";
+import {
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  addDays,
+} from "date-fns";
 import enUS from "date-fns/locale/en-US";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 
@@ -29,6 +23,7 @@ import KeyValueBlock from "../../Components/KeyValueBlock";
 import HeaderSection from "../../Components/HeaderSection";
 import LoadingOverlay from "../../Components/LoadingOverlay";
 import StatusChip from "../../Components/StatusChip";
+import { fetchRoomBookings, fetchRoomById } from "../../services/RoomService";
 
 const locales = { "en-US": enUS };
 const localizer = dateFnsLocalizer({
@@ -44,108 +39,93 @@ const RoomDetails = () => {
   const theme = useTheme();
 
   const [room, setRoom] = useState(null);
-  const [bookings, setBookings] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentView, setCurrentView] = useState("month");
+  const [bookings, setBookings] = useState([]);
 
+  // ================= Fetch room =================
   useEffect(() => {
-    const fetchRoomAndBookings = async () => {
+    const loadRoom = async () => {
+      setLoading(true);
       try {
-        const roomRef = doc(db, "rooms", roomId);
-        const roomSnap = await getDoc(roomRef);
-
-        if (!roomSnap.exists()) {
-          setRoom(null);
-          return;
-        }
-
-        const roomData = { id: roomSnap.id, ...roomSnap.data() };
-
-        const [hotelSnap, categorySnap] = await Promise.all([
-          roomData.hotelId
-            ? getDoc(doc(db, "hotel", roomData.hotelId))
-            : Promise.resolve(null),
-          roomData.categoryId
-            ? getDoc(doc(db, "roomCategory", roomData.categoryId))
-            : Promise.resolve(null),
-        ]);
-
-        const hotelName = hotelSnap?.exists()
-          ? hotelSnap.data().hotelName
-          : "Unknown Hotel";
-        const categoryName = categorySnap?.exists()
-          ? categorySnap.data().categoryName
-          : "Unknown Category";
-
-        const mergedRoom = {
-          ...roomData,
-          hotelName,
-          category: categoryName,
-          roomNumber: roomData.roomNo,
-        };
-        setRoom(mergedRoom);
-
-        const bookingQuery = query(
-          collection(db, "bookings"),
-          where("roomId", "array-contains", roomId),
-          where("status", "==", "confirmed")
-        );
-        const bookingSnap = await getDocs(bookingQuery);
-
-        const rawBookings = bookingSnap.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        }));
-
-        const userIds = [
-          ...new Set(rawBookings.map((b) => b.userId).filter(Boolean)),
-        ];
-
-        let userMap = {};
-        if (userIds.length > 0) {
-          const chunk = userIds.slice(0, 10);
-          const usersQuery = query(
-            collection(db, "users"),
-            where(documentId(), "in", chunk)
-          );
-          const usersSnap = await getDocs(usersQuery);
-
-          usersSnap.docs.forEach((doc) => {
-            const userData = doc.data();
-            userMap[doc.id] = userData.userName || userData.fullName || "Guest";
-          });
-        }
-
-        const calendarEvents = rawBookings
-          .map((d) => {
-            const checkIn = d.checkInDate?.toDate?.() || null;
-            const checkOut = d.checkOutDate?.toDate?.() || null;
-            if (!checkIn || !checkOut) return null;
-
-            const userName = userMap[d.userId] || "Guest";
-            const title = `Booking by ${userName}`;
-
-            return {
-              id: d.id,
-              title,
-              start: checkIn,
-              end: checkOut,
-              status: d.status,
-            };
-          })
-          .filter(Boolean);
-
-        setBookings(calendarEvents);
+        const data = await fetchRoomById(roomId);
+        setRoom(data);
       } catch (err) {
-        console.error("Error fetching room/bookings:", err);
+        console.error("Failed to fetch room details", err);
+        setRoom(null);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchRoomAndBookings();
+    if (roomId) loadRoom();
   }, [roomId]);
+
+  // ================= Fetch room bookings =================
+  // ================= Fetch room bookings =================
+// ================= Fetch room bookings =================
+useEffect(() => {
+  const loadBookings = async () => {
+    if (!roomId) return;
+
+    try {
+      const data = await fetchRoomBookings(roomId);
+
+      // ✅ Format events properly for the calendar
+      const calendarEvents = data.map((b) => {
+        // Ensure dates are valid Date objects
+        const startDate = b.start instanceof Date ? b.start : new Date(b.start);
+        const endDate = b.end instanceof Date ? b.end : new Date(b.end);
+
+        // ✅ FIX: Don't add extra day - the checkout date is already the last day of stay
+        // For hotel bookings, if someone books Dec 2-5, they occupy the room on Dec 2,3,4,5
+        // and check out on Dec 5, so we don't need to add an extra day
+        
+        return {
+          id: b.id,
+          title: `Booked by ${b.userName}`, // ✅ Show "Booked by [userName]"
+          start: startDate,
+          end: endDate, // No adjustment needed
+          allDay: true,
+          resource: {
+            status: b.status,
+            guestName: b.guestName,
+            userName: b.userName,
+          },
+        };
+      });
+
+      console.log("Calendar events:", calendarEvents); // Debug log
+      setBookings(calendarEvents);
+    } catch (err) {
+      console.error("Failed to load room bookings", err);
+      setBookings([]);
+    }
+  };
+
+  loadBookings();
+}, [roomId]);
+
+  // ✅ Custom event style getter for better visibility
+  const eventStyleGetter = (event) => {
+    const backgroundColor = event.resource?.status === "CheckedIn" 
+      ? theme.palette.success.main 
+      : theme.palette.primary.main;
+
+    return {
+      style: {
+        backgroundColor,
+        borderRadius: "6px",
+        opacity: 0.9,
+        color: "white",
+        border: "none",
+        display: "block",
+        fontWeight: 500,
+        padding: "2px 6px",
+      },
+    };
+  };
 
   return (
     <Box sx={{ flexGrow: 1, mt: 0, mb: 0, py: 1, position: "relative" }}>
@@ -158,7 +138,10 @@ const RoomDetails = () => {
       {room ? (
         <Card sx={{ borderRadius: 3, boxShadow: 4, mb: 4 }}>
           <CardContent
-            sx={{ px: { xs: 2, sm: 4, md: 6 }, position: "relative" }}
+            sx={{
+              px: { xs: 2, sm: 4, md: 6 },
+              position: "relative",
+            }}
           >
             <Box
               sx={{
@@ -172,29 +155,36 @@ const RoomDetails = () => {
             >
               <Typography
                 variant="h5"
-                sx={{ fontWeight: "bold", color: theme.palette.primary.main }}
+                sx={{
+                  fontWeight: "bold",
+                  color: theme.palette.primary.main,
+                }}
               >
-                Room Details: #{room.roomNumber}
+                Room Details: #{room.roomNo}
               </Typography>
               <StatusChip label={room.status} />
             </Box>
 
             <HeaderSection title="Room Overview" />
-            <Grid container sx={{ px: 0.5 }} spacing={2}>
+
+            <Grid container spacing={2} sx={{ px: 0.5 }}>
               <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-                <KeyValueBlock label="Room Number" value={room.roomNumber} />
+                <KeyValueBlock label="Room Number" value={room.roomNo} />
               </Grid>
               <Grid size={{ xs: 12, md: 6, lg: 4 }}>
                 <KeyValueBlock label="Hotel Name" value={room.hotelName} />
               </Grid>
               <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-                <KeyValueBlock label="Category" value={room.category} />
+                <KeyValueBlock label="Category" value={room.categoryName} />
               </Grid>
               <Grid size={{ xs: 12, md: 6, lg: 4 }}>
                 <KeyValueBlock label="Price (PKR)" value={room.price} />
               </Grid>
               <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-                <KeyValueBlock label="Property Type" value={room.propertyType} />
+                <KeyValueBlock
+                  label="Property Type"
+                  value={room.propertyType}
+                />
               </Grid>
               <Grid size={{ xs: 12, md: 6, lg: 4 }}>
                 <KeyValueBlock label="Current Status" value={room.status} />
@@ -202,6 +192,12 @@ const RoomDetails = () => {
             </Grid>
 
             <HeaderSection title="Room Booking Calendar" />
+
+            {/* ✅ Show booking count */}
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {bookings.length} confirmed booking{bookings.length !== 1 ? "s" : ""} found
+            </Typography>
+
             <Box
               sx={{
                 height: 600,
@@ -218,13 +214,15 @@ const RoomDetails = () => {
                   display: "flex",
                   justifyContent: "space-between",
                   flexWrap: "wrap",
+                  padding: "8px",
                 },
                 "& .rbc-toolbar button": {
                   color: theme.palette.common.white,
                   border: "none",
                   background: "transparent",
                   cursor: "pointer",
-                  transition: "all 0.2s",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
                   "&:hover": {
                     backgroundColor: theme.palette.grey[300],
                     color: theme.palette.primary.main,
@@ -241,10 +239,13 @@ const RoomDetails = () => {
                   borderRadius: "6px",
                   border: "none",
                   fontWeight: 500,
-                  padding: "2px 4px",
+                  padding: "2px 6px",
                 },
                 "& .rbc-today": {
                   backgroundColor: theme.palette.action.hover,
+                },
+                "& .rbc-month-view, & .rbc-time-view": {
+                  border: `1px solid ${theme.palette.divider}`,
                 },
               }}
             >
@@ -260,10 +261,15 @@ const RoomDetails = () => {
                 view={currentView}
                 onNavigate={(date) => setCurrentDate(date)}
                 onView={(view) => setCurrentView(view)}
+                eventPropGetter={eventStyleGetter}
                 style={{ height: "100%" }}
                 messages={{
                   noEventsInRange: "No confirmed bookings for this room",
+                  agenda: "Bookings",
                 }}
+                tooltipAccessor={(event) => 
+                  `${event.resource.guestName} - ${event.resource.status}`
+                }
               />
             </Box>
           </CardContent>
