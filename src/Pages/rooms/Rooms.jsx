@@ -23,7 +23,6 @@ import StatusChip from "../../Components/StatusChip";
 import Textfieldinput from "../../Components/Forms/Textfieldinput";
 import Selectinput from "../../Components/Forms/Selectinput";
 
-// ✅ SERVICES
 import {
   fetchAllRooms,
   fetchRoomById,
@@ -37,7 +36,6 @@ const Rooms = () => {
   const theme = useTheme();
   const navigate = useNavigate();
 
-  // ✅ Local state instead of Redux
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -83,7 +81,6 @@ const Rooms = () => {
     height: "100%",
   };
 
-  // ================= Delete =================
   const handleDeleteClick = (row) => {
     setConfirmDescription(
       `Are you sure you want to remove room number ${row.roomNo}?`

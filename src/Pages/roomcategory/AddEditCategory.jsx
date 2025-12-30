@@ -10,8 +10,6 @@ import {
   useTheme,
 } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
-
-// ✅ SERVICES
 import {
   fetchCategoryById,
   addCategory,
@@ -53,7 +51,7 @@ const AddEditCategory = () => {
     loadCategory();
   }, [id, isEdit, navigate]);
 
-  // ---------------- Submit ----------------
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!categoryName.trim()) return;

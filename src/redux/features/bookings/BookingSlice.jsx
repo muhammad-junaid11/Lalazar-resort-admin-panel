@@ -3,7 +3,7 @@ import { fetchBookings, fetchBookingDetailsById } from "./BookingThunk";
 
 const initialState = {
   bookings: [],
-  pendingBookings: [],   // keep track of pending bookings separately
+  pendingBookings: [], 
   bookingDetails: null,
   pendingCount: 0,
   loading: false,
@@ -16,7 +16,6 @@ const BookingSlice = createSlice({
   reducers: {
     setBookingsRealtime: (state, action) => {
       state.bookings = action.payload;
-      // Filter pending bookings
       state.pendingBookings = action.payload.filter(
         (b) => b.bookingStatus?.toLowerCase() === "pending"
       );
@@ -25,7 +24,7 @@ const BookingSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // Fetch Bookings
+
       .addCase(fetchBookings.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -33,7 +32,7 @@ const BookingSlice = createSlice({
       .addCase(fetchBookings.fulfilled, (state, action) => {
         state.bookings = action.payload;
 
-        // Filter pending bookings (old working logic)
+
         state.pendingBookings = action.payload.filter(
           (b) => b.bookingStatus?.toLowerCase() === "pending"
         );
@@ -46,7 +45,7 @@ const BookingSlice = createSlice({
         state.loading = false;
       })
 
-      // Fetch Booking Details by ID
+
       .addCase(fetchBookingDetailsById.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -62,7 +61,6 @@ const BookingSlice = createSlice({
   },
 });
 
-// Export action for realtime updates
 export const { setBookingsRealtime } = BookingSlice.actions;
 
 export default BookingSlice.reducer;

@@ -40,7 +40,6 @@ const EditUser = () => {
     },
   });
 
-  // Prefill user data
   useEffect(() => {
     if (!isEditMode) {
       setLoading(false);

@@ -17,7 +17,6 @@ import { useNavigate, Link } from "react-router-dom";
 import ConfirmDialog from "../../Components/ConfirmDialog";
 import LoadingOverlay from "../../Components/LoadingOverlay";
 
-// ✅ SERVICES
 import {
   fetchAllCategories,
   deleteCategory,
@@ -32,7 +31,6 @@ const RoomCategories = () => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
 
-  // ---------------- Fetch categories ----------------
   const loadCategories = async () => {
     try {
       setLoading(true);
@@ -49,7 +47,6 @@ const RoomCategories = () => {
     loadCategories();
   }, []);
 
-  // ---------------- Delete category ----------------
   const handleDelete = async () => {
     if (!selectedId) return;
 

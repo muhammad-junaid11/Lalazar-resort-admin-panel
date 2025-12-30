@@ -46,7 +46,6 @@ const UserDetails = () => {
         <Card sx={{ borderRadius: 3, boxShadow: 4, mb: 4 }}>
           <CardContent sx={{ px: { xs: 2, sm: 4, md: 6 }, position: "relative" }}>
             
-            {/* Header with title and edit button */}
             <Grid container justifyContent="space-between" alignItems="center" mb={3}>
               <Grid item>
                 <Typography variant="h5" sx={{ fontWeight: "bold", color: theme.palette.primary.main }}>

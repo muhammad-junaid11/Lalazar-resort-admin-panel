@@ -200,16 +200,12 @@ const handlePartialAmountChange = (e) => {
     return;
   }
 
-  // 2. Block the update if the value exceeds balance
   if (value > maxAllowed) {
     setHelperText(`Amount cannot exceed remaining balance (${maxAllowed})`);
-    // OPTIONAL: If you want to strictly block the typing, don't call setPartialAmount
-    // But usually, it's better to set the max value or just show the error.
-    // To match your "block" request:
     return; 
   }
 
-  // 3. Update state if valid
+
   if (!isNaN(value)) {
     setPartialAmount(inputValue);
     setHelperText("");

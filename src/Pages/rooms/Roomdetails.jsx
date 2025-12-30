@@ -44,7 +44,6 @@ const RoomDetails = () => {
   const [currentView, setCurrentView] = useState("month");
   const [bookings, setBookings] = useState([]);
 
-  // ================= Fetch room =================
   useEffect(() => {
     const loadRoom = async () => {
       setLoading(true);
@@ -62,9 +61,6 @@ const RoomDetails = () => {
     if (roomId) loadRoom();
   }, [roomId]);
 
-  // ================= Fetch room bookings =================
-  // ================= Fetch room bookings =================
-// ================= Fetch room bookings =================
 useEffect(() => {
   const loadBookings = async () => {
     if (!roomId) return;
@@ -72,21 +68,17 @@ useEffect(() => {
     try {
       const data = await fetchRoomBookings(roomId);
 
-      // ✅ Format events properly for the calendar
+
       const calendarEvents = data.map((b) => {
-        // Ensure dates are valid Date objects
         const startDate = b.start instanceof Date ? b.start : new Date(b.start);
         const endDate = b.end instanceof Date ? b.end : new Date(b.end);
 
-        // ✅ FIX: Don't add extra day - the checkout date is already the last day of stay
-        // For hotel bookings, if someone books Dec 2-5, they occupy the room on Dec 2,3,4,5
-        // and check out on Dec 5, so we don't need to add an extra day
         
         return {
           id: b.id,
-          title: `Booked by ${b.userName}`, // ✅ Show "Booked by [userName]"
+          title: `Booked by ${b.userName}`,
           start: startDate,
-          end: endDate, // No adjustment needed
+          end: endDate,
           allDay: true,
           resource: {
             status: b.status,
@@ -107,7 +99,6 @@ useEffect(() => {
   loadBookings();
 }, [roomId]);
 
-  // ✅ Custom event style getter for better visibility
   const eventStyleGetter = (event) => {
     const backgroundColor = event.resource?.status === "CheckedIn" 
       ? theme.palette.success.main 
@@ -193,7 +184,7 @@ useEffect(() => {
 
             <HeaderSection title="Room Booking Calendar" />
 
-            {/* ✅ Show booking count */}
+           
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               {bookings.length} confirmed booking{bookings.length !== 1 ? "s" : ""} found
             </Typography>

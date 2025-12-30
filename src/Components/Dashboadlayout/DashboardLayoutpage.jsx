@@ -28,7 +28,6 @@ import { auth } from "../../FirebaseFireStore/Firebase";
 import { signOut } from "firebase/auth";
 import { toast } from "react-toastify";
 import { useDispatch, useSelector } from "react-redux";
-import { db } from "../../FirebaseFireStore/Firebase";
 import { Link as RouterLink } from "react-router-dom";
 import Skeleton from "@mui/material/Skeleton";
 
@@ -233,7 +232,6 @@ const DashboardLayoutpage = () => {
         </Box>
       </Drawer>
 
-      {/* ===== MAIN CONTENT ===== */}
       <Box
         component="main"
         sx={{

@@ -19,7 +19,6 @@ import { fetchAllCategories } from "../../services/CategoryService";
 
 import Textfieldinput from "../../Components/Forms/Textfieldinput";
 
-// ✅ SERVICES
 import {
   addRoom,
   updateRoom,
@@ -53,18 +52,15 @@ const AddRoom = () => {
     },
   });
 
-  /* ================= Dropdown data ================= */
  useEffect(() => {
   const fetchDropdowns = async () => {
     try {
-      // Fetch hotels and map to {id, name} array
-      const hotelsData = await fetchAllHotels(); // returns {id: hotelName, ...}
+      const hotelsData = await fetchAllHotels();
       setHotels(
         Object.entries(hotelsData).map(([id, name]) => ({ id, name }))
       );
 
-      // Fetch categories and map to {id, name} array
-      const categoriesData = await fetchAllCategories(); // returns [{id, categoryName}]
+      const categoriesData = await fetchAllCategories();
       setCategories(
         categoriesData.map((c) => ({
           id: c.id,
@@ -81,7 +77,6 @@ const AddRoom = () => {
 }, []);
 
 
-  /* ================= Prefill (Edit mode) ================= */
   useEffect(() => {
     if (!isEditMode) {
       setLoading(false);
@@ -114,8 +109,6 @@ const AddRoom = () => {
 
     loadRoom();
   }, [isEditMode, roomId, navigate, reset]);
-
-  /* ================= Submit ================= */
   const onSubmit = async (formData) => {
     const hotel = hotels.find((h) => h.name === formData.hotelName);
     const category = categories.find((c) => c.name === formData.category);

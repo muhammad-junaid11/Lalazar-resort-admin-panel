@@ -38,7 +38,6 @@ const stats = [
 const Bookings = () => {
   const theme = useTheme();
 
-  // Get bookings directly from Redux - payment status is now calculated correctly in the service
   const { bookings, loading: reduxLoading } = useSelector((state) => state.booking);
 
   const [categories, setCategories] = useState([]);

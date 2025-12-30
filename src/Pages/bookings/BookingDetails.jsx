@@ -20,7 +20,6 @@ import LoadingOverlay from "../../Components/LoadingOverlay";
 import StatusChip from "../../Components/StatusChip";
 import FormattedDate from "../../Components/FormattedDate";
 
-// ✅ Import the services
 import { fetchBookingByIdForUI, updateBookingStatus,updateBookingStatusWithRooms } from "../../services/BookingService";
 
 const BookingDetails = () => {
@@ -178,7 +177,7 @@ const BookingDetails = () => {
             </Button>
           </Box>
 
-          {/* Guest Info */}
+      
           <HeaderSection title="Guest Information" />
           <Grid container sx={{ px: 0.5 }} spacing={2}>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>
@@ -205,7 +204,7 @@ const BookingDetails = () => {
             </Grid>
           </Grid>
 
-          {/* Rooms Info */}
+      
           <HeaderSection title="Rooms Information" />
           <Box
             sx={{
@@ -248,7 +247,7 @@ const BookingDetails = () => {
             ))}
           </Box>
 
-          {/* Reservation & Payment */}
+      
           <HeaderSection title="Reservation & Payment Details" />
           <Grid container sx={{ px: 0.5 }} spacing={2}>
             <Grid size={{ xs: 12, md: 6, lg: 4 }}>

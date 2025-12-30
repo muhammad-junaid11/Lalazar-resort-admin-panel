@@ -95,7 +95,6 @@ const Users = () => {
           >
             <EditIcon fontSize="small" />
           </Button>
-          {/* Delete button removed */}
         </Box>
       ),
     },

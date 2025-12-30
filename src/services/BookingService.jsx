@@ -4,10 +4,6 @@ import { fetchRoomsWithCategory, fetchRoomsWithCategoryAndHotel } from "./RoomSe
 import { fetchUsersByBookingIds, fetchFullUsersByIds } from "./UserService";
 import { fetchPaymentsByBookingIds } from "./PaymentService";
 
-/**
- * Fetch all bookings for UI (Bookings List page)
- * NOW PROPERLY CALCULATES PAYMENT STATUS
- */
 export const fetchBookingsForUI = async () => {
   const snap = await getDocs(collection(db, "bookings"));
   const bookings = snap.docs.map(d => {
@@ -33,13 +29,13 @@ export const fetchBookingsForUI = async () => {
     const roomList = (b.roomId || []).map(rid => rooms[rid]).filter(Boolean);
     const totalAmount = roomList.reduce((sum, r) => sum + (r.price || 0), 0);
     
-    // FIX: Get the actual paid amount from payments
+  
     const paymentData = payments[b.id];
     const paidAmount = paymentData?.paidAmount || 0;
 
     return {
       id: b.id,
-      bookingId: b.bookingId || b.id, // Include bookingId for search
+      bookingId: b.bookingId || b.id,
       userName: users[b.userId]?.userName || users[b.userId]?.fullName || "Guest",
       email: users[b.userId]?.email || users[b.userId]?.userEmail || "N/A",
       number: users[b.userId]?.number || "--",
@@ -52,10 +48,9 @@ export const fetchBookingsForUI = async () => {
       bookingStatus: b.rawStatus
         ? b.rawStatus.charAt(0).toUpperCase() + b.rawStatus.slice(1)
         : "Pending",
-      // FIX: Properly calculate payment status
       paymentStatus: paidAmount >= totalAmount ? "Paid" : "Pending",
-      totalAmount, // Add for reference
-      paidAmount,  // Add for reference
+      totalAmount, 
+      paidAmount, 
     };
   });
 };
@@ -66,9 +61,7 @@ export const updateBookingStatus = async (bookingId, status) => {
   await updateDoc(doc(db, "bookings", bookingId), { status: status.toLowerCase() });
 };
 
-/**
- * Fetch single booking for Booking Details page
- */
+
 export const fetchBookingByIdForUI = async (bookingId) => {
   const bookingSnap = await getDoc(doc(db, "bookings", bookingId));
   if (!bookingSnap.exists()) return null;
@@ -95,7 +88,7 @@ export const fetchBookingByIdForUI = async (bookingId) => {
 
   const paidAmount = payments[bookingId]?.paidAmount || 0;
 
-  // Latest payment date
+
   let latestPaymentDate = null;
   if (payments[bookingId]?.paymentDates?.length) {
     latestPaymentDate = payments[bookingId].paymentDates
@@ -103,7 +96,7 @@ export const fetchBookingByIdForUI = async (bookingId) => {
       .sort((a, b) => b - a)[0];
   }
 
-  // Latest receipt
+
   const latestReceipt = payments[bookingId]?.receiptPaths?.slice(-1)[0] || "";
   
   const rawStatus = bookingData.status || "pending";
@@ -134,9 +127,7 @@ export const fetchBookingByIdForUI = async (bookingId) => {
   };
 };
 
-/**
- * Minimal bookings for Payments ONLY
- */
+
 export const fetchBookingsForPayment = async () => {
   const snap = await getDocs(collection(db, "bookings"));
 

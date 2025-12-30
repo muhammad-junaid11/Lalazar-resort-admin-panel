@@ -13,9 +13,7 @@ import { db } from "../FirebaseFireStore/Firebase";
 import { fetchCategoriesByIds } from "./CategoryService";
 import { fetchHotelById } from "./HotelService";
 
-/* ============================
-   Fetch rooms by IDs
-============================ */
+
 export const fetchRoomsByIds = async (roomIds = []) => {
   if (!roomIds.length) return {};
 
@@ -51,9 +49,7 @@ export const fetchRoomsByIds = async (roomIds = []) => {
   return result;
 };
 
-/* ============================
-   Rooms + Category
-============================ */
+
 export const fetchRoomsWithCategory = async (roomIds = []) => {
   const rooms = await fetchRoomsByIds(roomIds);
   if (!Object.keys(rooms).length) return {};
@@ -76,9 +72,7 @@ export const fetchRoomsWithCategory = async (roomIds = []) => {
   return rooms;
 };
 
-/* ============================
-   Rooms + Category + Hotel
-============================ */
+
 export const fetchRoomsWithCategoryAndHotel = async (roomIds = []) => {
   const rooms = await fetchRoomsByIds(roomIds);
   if (!Object.keys(rooms).length) return {};
@@ -120,9 +114,7 @@ export const fetchRoomsWithCategoryAndHotel = async (roomIds = []) => {
   return rooms;
 };
 
-/* ============================
-   Single room
-============================ */
+
 export const fetchRoomById = async (roomId) => {
   if (!roomId) return null;
 
@@ -130,9 +122,7 @@ export const fetchRoomById = async (roomId) => {
   return rooms[roomId] || null;
 };
 
-/* ============================
-   All rooms
-============================ */
+
 export const fetchAllRooms = async () => {
   const snap = await getDocs(collection(db, "rooms"));
   const roomIds = snap.docs.map((d) => d.id);
@@ -143,34 +133,25 @@ export const fetchAllRooms = async () => {
   return Object.values(roomsMap);
 };
 
-/* ============================
-   Add room
-============================ */
+
 export const addRoom = async (payload) => {
   const docRef = await addDoc(collection(db, "rooms"), payload);
   return { id: docRef.id, ...payload };
 };
 
-/* ============================
-   Update room
-============================ */
+
 export const updateRoom = async (roomId, payload) => {
   await updateDoc(doc(db, "rooms", roomId), payload);
   return { id: roomId, ...payload };
 };
 
-/* ============================
-   Delete room
-============================ */
+
 export const deleteRoomById = async (roomId) => {
   await deleteDoc(doc(db, "rooms", roomId));
   return roomId;
 };
 
-/* ============================
-   Fetch bookings for a room
-   Note: roomId in bookings is stored as an ARRAY
-============================ */
+
 export const fetchRoomBookings = async (roomId) => {
   if (!roomId) return [];
   try {
@@ -181,7 +162,6 @@ export const fetchRoomBookings = async (roomId) => {
     return snap.docs.map((d) => {
       const data = d.data();
       
-      // Extract dates safely
       const checkInDate = data.checkInDate?.toDate ? data.checkInDate.toDate() : new Date(data.checkInDate || Date.now());
       const checkOutDate = data.checkOutDate?.toDate ? data.checkOutDate.toDate() : new Date(data.checkOutDate || Date.now());
 

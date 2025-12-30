@@ -7,9 +7,7 @@ import { setBookingsRealtime } from "./BookingSlice";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../../FirebaseFireStore/Firebase";
 
-/**
- * Fetch all bookings
- */
+
 export const fetchBookings = createAsyncThunk(
   "booking/fetchBookings",
   async (_, { rejectWithValue }) => {
@@ -24,9 +22,7 @@ export const fetchBookings = createAsyncThunk(
   }
 );
 
-/**
- * Fetch single booking details by ID
- */
+
 export const fetchBookingDetailsById = createAsyncThunk(
   "booking/fetchBookingDetailsById",
   async (bookingId, { rejectWithValue }) => {

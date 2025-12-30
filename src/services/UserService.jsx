@@ -1,4 +1,4 @@
-// UserService.js
+
 import {
   collection,
   getDocs,
@@ -12,7 +12,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../FirebaseFireStore/Firebase";
 
-// Used by Booking UI
+
 export const fetchUsersByBookingIds = async (userIds) => {
   if (!userIds?.length) return {};
   const result = {};
@@ -39,7 +39,7 @@ export const fetchUsersByBookingIds = async (userIds) => {
   return result;
 };
 
-// ✅ Minimal user fetch for Payments
+
 export const fetchUsersByIds = async (userIds) => {
   if (!userIds?.length) return {};
   const users = await fetchUsersByBookingIds(userIds);
@@ -73,7 +73,7 @@ export const fetchFullUsersByIds = async (userIds) => {
         userName: data.userName || data.fullName || "Guest",
         gender: data.gender || "--",
         dob: data.dob ? data.dob.toDate() : null,
-        number: data.number || "--", // ✅ Fix here
+        number: data.number || "--",
         email: data.email || data.userEmail || "--",
         address: data.address || "--",
       };
@@ -83,7 +83,7 @@ export const fetchFullUsersByIds = async (userIds) => {
   return result;
 };
 
-// Fetch single user by ID
+
 export const fetchUserById = async (userId) => {
   const snap = await getDoc(doc(db, "users", userId));
   if (!snap.exists()) return null;
@@ -100,7 +100,7 @@ export const fetchUserById = async (userId) => {
   };
 };
 
-// Fetch all users
+
 export const fetchAllUsers = async () => {
   const snap = await getDocs(collection(db, "users"));
   const users = {};
@@ -110,7 +110,7 @@ export const fetchAllUsers = async () => {
       id: d.id,
       userName: data.userName || data.fullName || "Guest",
       gender: data.gender || "--",
-      dob: data.dob ? data.dob.toDate() : null,  // Convert Firestore Timestamp to JS Date
+      dob: data.dob ? data.dob.toDate() : null, 
       phone: data.number || "--", 
       email: data.userEmail || "--",
       address: data.address || "--",
@@ -119,11 +119,11 @@ export const fetchAllUsers = async () => {
   return users;
 };
 
-// Update user with safe DOB handling
+
 export const updateUser = async (userId, payload) => {
   const userRef = doc(db, "users", userId);
 
-  // Only include dob if valid
+
   const updatePayload = { ...payload };
   if (payload.dob) {
     const dobDate = new Date(payload.dob);
@@ -139,7 +139,7 @@ export const updateUser = async (userId, payload) => {
   await updateDoc(userRef, updatePayload);
 };
 
-// Delete user
+
 export const deleteUser = async (userId) => {
   await deleteDoc(doc(db, "users", userId));
 };

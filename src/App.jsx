@@ -35,13 +35,8 @@ function AppContent() {
   const dispatch = useDispatch();
 
 useEffect(() => {
-  // 1️⃣ initial fetch
   dispatch(fetchBookings());
-
-  // 2️⃣ start realtime listener
   const unsubscribe = dispatch(startBookingsRealtime());
-
-  // 3️⃣ cleanup on unmount
   return () => {
     if (unsubscribe) unsubscribe();
   };
